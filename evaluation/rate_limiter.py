@@ -119,13 +119,31 @@ class RateLimiter:
                 last_exception = e
                 error_str = str(e).lower()
                 
-                if "rate" in error_str or "limit" in error_str or "throttl" in error_str:
+                # Check for rate limiting
+                is_rate_limit = "rate" in error_str or "limit" in error_str or "throttl" in error_str
+                
+                # Check for timeout errors (including wrapped RetryError with TimeoutError)
+                is_timeout = (
+                    "timeout" in error_str
+                    or "timed out" in error_str
+                    or isinstance(e, (TimeoutError, asyncio.TimeoutError))
+                    or "retryerror" in error_str and "timeouterror" in error_str
+                )
+                
+                if is_rate_limit:
                     self.backoff()
                     print(
                         f"{log_prefix} Rate limited on attempt {attempt}/{self.max_retries}, "
                         f"backing off to {self.delay_seconds:.1f}s between requests"
                     )
-                    
+                    if attempt < self.max_retries:
+                        continue
+                elif is_timeout:
+                    self.backoff()
+                    print(
+                        f"{log_prefix} Timeout on attempt {attempt}/{self.max_retries}, "
+                        f"backing off to {self.delay_seconds:.1f}s between requests"
+                    )
                     if attempt < self.max_retries:
                         continue
                 
