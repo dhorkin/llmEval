@@ -37,6 +37,16 @@ nest_asyncio.apply()
 LOG_INDENT = "    "
 
 
+def _is_ci_environment() -> bool:
+    """Check if running in a CI environment (GitHub Actions, etc.)."""
+    return os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
+
+
+def _get_progress_bar_format() -> str | None:
+    """Return progress bar format - None in CI to disable, default otherwise."""
+    return None if _is_ci_environment() else "llm_classify: {l_bar}{bar}{r_bar}"
+
+
 class _IndentedWriter:
     """Wrapper that adds indentation prefix to each line of output."""
     
@@ -379,6 +389,7 @@ class PhoenixEvaluator:
                 rails=rails,
                 provide_explanation=True,
                 concurrency=1,
+                progress_bar_format=_get_progress_bar_format(),
             )
 
         if results.empty:
@@ -666,6 +677,7 @@ class PhoenixEvaluator:
                 evaluators=[self._hallucination_eval],
                 provide_explanation=True,
                 concurrency=1,
+                progress_bar_format=_get_progress_bar_format(),
             )
         if results[0].empty:
             return 0.0, "Evaluation returned empty results"
@@ -684,6 +696,7 @@ class PhoenixEvaluator:
                 evaluators=[self._qa_eval],
                 provide_explanation=True,
                 concurrency=1,
+                progress_bar_format=_get_progress_bar_format(),
             )
         if results[0].empty:
             return 0.0, "Evaluation returned empty results"
@@ -702,6 +715,7 @@ class PhoenixEvaluator:
                 evaluators=[self._relevance_eval],
                 provide_explanation=True,
                 concurrency=1,
+                progress_bar_format=_get_progress_bar_format(),
             )
         if results[0].empty:
             return 0.0, "Evaluation returned empty results"
@@ -732,6 +746,7 @@ Answer with one word: faithful or unfaithful"""
                 rails=["faithful", "unfaithful"],
                 provide_explanation=True,
                 concurrency=1,
+                progress_bar_format=_get_progress_bar_format(),
             )
 
         if results.empty:
@@ -795,6 +810,7 @@ Answer with one word: faithful or unfaithful"""
                 rails=list(DISCRETE_SCALE_MAP.keys()),
                 provide_explanation=True,
                 concurrency=1,
+                progress_bar_format=_get_progress_bar_format(),
             )
 
         if results.empty:
