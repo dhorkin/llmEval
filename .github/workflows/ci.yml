@@ -56,10 +56,24 @@ jobs:
     if: github.event_name == 'push'
     environment: "Default environment"
     env:
+      # Secrets
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       NASA_API_KEY: ${{ secrets.NASA_API_KEY }}
       LOGMEAL_API_KEY: ${{ secrets.LOGMEAL_API_KEY }}
+      # Environment variables from GitHub
+      EVAL_RATE_LIMIT_INITIAL_RPS: ${{ vars.EVAL_RATE_LIMIT_INITIAL_RPS }}
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+      LLM_TEMPERATURE: ${{ vars.LLM_TEMPERATURE }}
+      LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+      MAX_RETRIES: ${{ vars.MAX_RETRIES }}
+      MAX_TOKENS: ${{ vars.MAX_TOKENS }}
+      MINIMUM_AGREEMENT_PASS_THRESHOLD: ${{ vars.MINIMUM_AGREEMENT_PASS_THRESHOLD }}
+      MINIMUM_METRIC_PASS_THRESHOLD: ${{ vars.MINIMUM_METRIC_PASS_THRESHOLD }}
+      PHOENIX_EVALUATION_METHOD: ${{ vars.PHOENIX_EVALUATION_METHOD }}
+      REQUEST_TIMEOUT: ${{ vars.REQUEST_TIMEOUT }}
+      # Disable deepeval async workers to avoid ZeroDivisionError in CI
+      DEEPEVAL_ASYNC_MODE: "false"
     steps:
       - uses: actions/checkout@v4
 
