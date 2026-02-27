@@ -142,6 +142,12 @@ python main.py drift-check
 | **QA Correctness** | Is the answer factually correct? | 0.7 |
 | **Relevance** | Is output relevant to the input? | 0.7 |
 
+### Score Normalization
+
+**DeepEval Hallucination**: DeepEval's hallucination metric uses an inverted scale where 1.0 = high hallucination (bad) and 0.0 = no hallucination (good). This project normalizes it to match the "higher is better" convention used by other metrics. A displayed score of 0.0 means the response was highly hallucinatory, while 1.0 means no hallucination detected.
+
+> **Note**: When debugging, the reason text will show both the normalized score and the original DeepEval score, e.g., "score is 0.00 (inverted from 1.00)".
+
 ### Phoenix Evaluation Methods
 
 Control how Phoenix scores responses using `PHOENIX_EVALUATION_METHOD`:

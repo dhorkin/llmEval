@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from deepeval import evaluate
-from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, BaseMetric
-from deepeval.test_case import LLMTestCase
+from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, HallucinationMetric, GEval, BaseMetric
+from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
 from config.settings import get_settings
 from evaluation.rate_limiter import get_rate_limiter
@@ -204,7 +204,8 @@ class DeepEvalRunner:
             input=input_query,
             actual_output=actual_output,
             expected_output=expected_output or "",
-            retrieval_context=context,
+            context=context,  # For HallucinationMetric
+            retrieval_context=context,  # For FaithfulnessMetric
         )
 
         print(f"{LOG_INDENT}[DeepEval] Running answer relevancy eval...")
@@ -241,6 +242,51 @@ class DeepEvalRunner:
                 )
             )
 
+        if expected_output:
+            print(f"{LOG_INDENT}[DeepEval] Running correctness eval (GEval)...")
+            try:
+                correctness_metric = GEval(
+                    name="Correctness",
+                    evaluation_steps=[
+                        "Check whether the facts in 'actual output' contradict any facts in 'expected output'",
+                        "Heavily penalize omission of important details",
+                        "Vague language or contradicting opinions are acceptable",
+                    ],
+                    evaluation_params=[
+                        LLMTestCaseParams.ACTUAL_OUTPUT,
+                        LLMTestCaseParams.EXPECTED_OUTPUT,
+                    ],
+                    model=self._model,
+                    threshold=0.7,
+                )
+                await self._rate_limiter.execute_with_retry(
+                    correctness_metric.measure,
+                    test_case,
+                    service_name="DeepEval",
+                    metric_name="correctness",
+                )
+                scores.append(
+                    EvaluationScore(
+                        metric_name="deepeval_correctness",
+                        score=correctness_metric.score,
+                        passed=correctness_metric.is_successful(),
+                        threshold=0.7,
+                        reason=correctness_metric.reason,
+                    )
+                )
+                print(f"{LOG_INDENT}[DeepEval] Correctness complete: {correctness_metric.score:.2f}")
+            except Exception as e:
+                print(f"{LOG_INDENT}[DeepEval] Correctness failed: {e}")
+                scores.append(
+                    EvaluationScore(
+                        metric_name="deepeval_correctness",
+                        score=0.0,
+                        passed=False,
+                        threshold=0.7,
+                        reason=f"Evaluation error: {e}",
+                    )
+                )
+
         if context:
             print(f"{LOG_INDENT}[DeepEval] Running faithfulness eval...")
             try:
@@ -272,6 +318,53 @@ class DeepEvalRunner:
                         score=0.0,
                         passed=False,
                         threshold=0.8,
+                        reason=f"Evaluation error: {e}",
+                    )
+                )
+
+            print(f"{LOG_INDENT}[DeepEval] Running hallucination eval...")
+            try:
+                hallucination_metric = HallucinationMetric(
+                    threshold=0.5,
+                    model=self._model,
+                )
+                await self._rate_limiter.execute_with_retry(
+                    hallucination_metric.measure,
+                    test_case,
+                    service_name="DeepEval",
+                    metric_name="hallucination",
+                )
+                hallucination_score = 1.0 - hallucination_metric.score
+                # Update reason to reflect inverted score (DeepEval uses higher=worse,
+                # but we invert to higher=better for consistency)
+                original_reason = hallucination_metric.reason or ""
+                if hallucination_metric.score is not None:
+                    original_score_str = f"{hallucination_metric.score:.2f}"
+                    inverted_score_str = f"{hallucination_score:.2f}"
+                    adjusted_reason = original_reason.replace(
+                        f"score is {original_score_str}",
+                        f"score is {inverted_score_str}"
+                    )
+                else:
+                    adjusted_reason = original_reason
+                scores.append(
+                    EvaluationScore(
+                        metric_name="deepeval_hallucination",
+                        score=hallucination_score,
+                        passed=hallucination_metric.is_successful(),
+                        threshold=0.5,
+                        reason=adjusted_reason,
+                    )
+                )
+                print(f"{LOG_INDENT}[DeepEval] Hallucination complete: {hallucination_score:.2f}")
+            except Exception as e:
+                print(f"{LOG_INDENT}[DeepEval] Hallucination failed: {e}")
+                scores.append(
+                    EvaluationScore(
+                        metric_name="deepeval_hallucination",
+                        score=0.0,
+                        passed=False,
+                        threshold=0.5,
                         reason=f"Evaluation error: {e}",
                     )
                 )

@@ -232,6 +232,72 @@ Evaluate the relevance of the response and provide a score from 0.00 to 1.00 whe
 Respond with JSON in this exact format:
 {{"score": <number between 0.00 and 1.00>, "explanation": "<one sentence>"}}"""
 
+# Faithfulness evaluation templates
+DISCRETE_FAITHFULNESS_TEMPLATE = """You are evaluating whether an AI response is faithful to (grounded in) the provided context.
+
+Input Query: {input}
+AI Response: {output}
+Reference Context: {reference}
+
+Rate how faithfully the response sticks to information in the context on a 5-point scale:
+- excellent: Response only contains information supported by the context
+- good: Response mostly uses context with minor unsupported additions
+- fair: Response has some supported and some unsupported claims
+- poor: Response contains significant claims not in the context
+- very_poor: Response largely ignores or contradicts the context
+
+Provide your rating and a one-sentence explanation."""
+
+CONTINUOUS_FAITHFULNESS_TEMPLATE = """You are evaluating whether an AI response is faithful to (grounded in) the provided context.
+
+Input Query: {input}
+AI Response: {output}
+Reference Context: {reference}
+
+Evaluate the faithfulness of the response and provide a score from 0.00 to 1.00 where:
+- 1.00 = Completely faithful, all claims supported by context
+- 0.75 = Mostly faithful with minor unsupported additions
+- 0.50 = Mixed faithful and unfaithful content
+- 0.25 = Mostly unfaithful, many unsupported claims
+- 0.00 = Completely unfaithful, ignores or contradicts context
+
+Respond with JSON in this exact format:
+{{"score": <number between 0.00 and 1.00>, "explanation": "<one sentence>"}}"""
+
+# Tool selection evaluation templates
+DISCRETE_TOOL_SELECTION_TEMPLATE = """You are evaluating whether the correct tools were selected for the given task.
+
+Input Query: {input}
+Available Tools: {available_tools}
+Expected Tools: {expected_tools}
+Actually Called Tools: {actual_tools}
+
+Rate the tool selection on a 5-point scale:
+- excellent: All correct tools selected, no unnecessary tools
+- good: Correct tools selected with minor issues
+- fair: Some correct tools, some missing or unnecessary
+- poor: Many wrong or missing tools
+- very_poor: Completely wrong tool selection
+
+Provide your rating and a one-sentence explanation."""
+
+CONTINUOUS_TOOL_SELECTION_TEMPLATE = """You are evaluating whether the correct tools were selected for the given task.
+
+Input Query: {input}
+Available Tools: {available_tools}
+Expected Tools: {expected_tools}
+Actually Called Tools: {actual_tools}
+
+Evaluate the tool selection and provide a score from 0.00 to 1.00 where:
+- 1.00 = Perfect tool selection, all expected tools called
+- 0.75 = Good selection with minor issues
+- 0.50 = Partial match, some correct some missing
+- 0.25 = Poor selection, mostly incorrect
+- 0.00 = Completely wrong tool selection
+
+Respond with JSON in this exact format:
+{{"score": <number between 0.00 and 1.00>, "explanation": "<one sentence>"}}"""
+
 
 def _parse_continuous_response(response: str) -> tuple[float, str]:
     """Parse a continuous evaluation response to extract score and explanation."""
@@ -348,6 +414,8 @@ class PhoenixEvaluator:
         actual_output: str,
         context: list[str] | None = None,
         expected_output: str | None = None,
+        expected_tools: list[str] | None = None,
+        actual_tools_called: list[str] | None = None,
     ) -> list[EvaluationScore]:
         """
         Evaluate a single test case using Phoenix evaluators.
@@ -358,6 +426,8 @@ class PhoenixEvaluator:
             actual_output: The actual output from the agent
             context: Context/retrieval context for evaluation
             expected_output: Expected output for comparison
+            expected_tools: Tools expected to be called
+            actual_tools_called: Tools that were actually called
 
         Returns:
             List of EvaluationScore objects
@@ -503,6 +573,87 @@ class PhoenixEvaluator:
                 )
             )
 
+        # Faithfulness evaluation (only when context is provided)
+        if context:
+            faithfulness_df = pd.DataFrame({
+                "input": [input_query],
+                "output": [actual_output],
+                "reference": [context_str],
+            })
+            try:
+                print(f"{LOG_INDENT}[Phoenix] Running faithfulness eval...")
+                if self._eval_method == "categorical":
+                    score, explanation = self._evaluate_categorical_faithfulness(faithfulness_df)
+                elif self._eval_method == "discrete":
+                    score, explanation = self._evaluate_discrete(
+                        faithfulness_df, DISCRETE_FAITHFULNESS_TEMPLATE, "faithfulness"
+                    )
+                else:  # continuous
+                    score, explanation = self._evaluate_continuous(
+                        input_query, actual_output, context_str,
+                        CONTINUOUS_FAITHFULNESS_TEMPLATE
+                    )
+                scores.append(
+                    EvaluationScore(
+                        metric_name="phoenix_faithfulness",
+                        score=score,
+                        passed=score >= 0.8,
+                        threshold=0.8,
+                        reason=explanation,
+                    )
+                )
+                print(f"{LOG_INDENT}[Phoenix] Faithfulness eval complete: {score}")
+            except Exception as e:
+                print(f"{LOG_INDENT}[Phoenix] Faithfulness eval failed: {e}")
+                scores.append(
+                    EvaluationScore(
+                        metric_name="phoenix_faithfulness",
+                        score=0.0,
+                        passed=False,
+                        threshold=0.8,
+                        reason=f"Evaluation error: {e}",
+                    )
+                )
+
+        # Tool selection evaluation (only when expected_tools is provided)
+        if expected_tools:
+            actual_tools = actual_tools_called or []
+            try:
+                print(f"{LOG_INDENT}[Phoenix] Running tool selection eval...")
+                if self._eval_method == "categorical":
+                    score, explanation = self._evaluate_categorical_tool_selection(
+                        expected_tools, actual_tools
+                    )
+                elif self._eval_method == "discrete":
+                    score, explanation = self._evaluate_discrete_tool_selection(
+                        input_query, expected_tools, actual_tools
+                    )
+                else:  # continuous
+                    score, explanation = self._evaluate_continuous_tool_selection(
+                        input_query, expected_tools, actual_tools
+                    )
+                scores.append(
+                    EvaluationScore(
+                        metric_name="phoenix_tool_selection",
+                        score=score,
+                        passed=score >= 1.0,
+                        threshold=1.0,
+                        reason=explanation,
+                    )
+                )
+                print(f"{LOG_INDENT}[Phoenix] Tool selection eval complete: {score}")
+            except Exception as e:
+                print(f"{LOG_INDENT}[Phoenix] Tool selection eval failed: {e}")
+                scores.append(
+                    EvaluationScore(
+                        metric_name="phoenix_tool_selection",
+                        score=0.0,
+                        passed=False,
+                        threshold=1.0,
+                        reason=f"Evaluation error: {e}",
+                    )
+                )
+
         return scores
 
     def _evaluate_categorical_hallucination(self, df: pd.DataFrame) -> tuple[float, str]:
@@ -556,6 +707,123 @@ class PhoenixEvaluator:
         score = 1.0 if label == "relevant" else 0.0
         return score, explanation or f"Label: {label}"
 
+    def _evaluate_categorical_faithfulness(self, df: pd.DataFrame) -> tuple[float, str]:
+        """Evaluate faithfulness using categorical (binary) mode via llm_classify."""
+        model = self._get_model()
+        template = """You are evaluating whether an AI response is faithful to the provided context.
+
+Input Query: {input}
+AI Response: {output}
+Reference Context: {reference}
+
+Is the response faithful to the context (all claims supported by context)?
+
+Answer with one word: faithful or unfaithful"""
+
+        with _indented_output():
+            results = llm_classify(
+                dataframe=df,
+                model=model,
+                template=template,
+                rails=["faithful", "unfaithful"],
+                provide_explanation=True,
+                concurrency=1,
+            )
+
+        if results.empty:
+            return 0.0, "Evaluation returned empty results"
+        row = results.iloc[0]
+        label = _safe_get_value(row, "label", "")
+        explanation = _safe_get_value(row, "explanation", "No explanation provided")
+        score = 1.0 if label == "faithful" else 0.0
+        return score, explanation or f"Label: {label}"
+
+    def _evaluate_categorical_tool_selection(
+        self,
+        expected_tools: list[str],
+        actual_tools: list[str],
+    ) -> tuple[float, str]:
+        """Evaluate tool selection using categorical (binary) mode."""
+        if not expected_tools:
+            return 1.0, "No specific tools expected"
+
+        if not actual_tools:
+            return 0.0, f"No tools called. Expected: {', '.join(expected_tools)}"
+
+        # Check if all expected tools were called
+        expected_set = set(expected_tools)
+        actual_set = set(actual_tools)
+
+        if expected_set == actual_set:
+            return 1.0, f"All expected tools called: {', '.join(expected_tools)}"
+        elif expected_set.issubset(actual_set):
+            extra = actual_set - expected_set
+            return 1.0, f"Expected tools called. Extra tools: {', '.join(extra)}"
+        elif actual_set.issubset(expected_set):
+            missing = expected_set - actual_set
+            return 0.0, f"Missing tools: {', '.join(missing)}"
+        else:
+            missing = expected_set - actual_set
+            extra = actual_set - expected_set
+            return 0.0, f"Missing: {', '.join(missing)}. Unexpected: {', '.join(extra)}"
+
+    def _evaluate_discrete_tool_selection(
+        self,
+        input_query: str,
+        expected_tools: list[str],
+        actual_tools: list[str],
+    ) -> tuple[float, str]:
+        """Evaluate tool selection using discrete 5-point scale."""
+        model = self._get_model()
+
+        df = pd.DataFrame({
+            "input": [input_query],
+            "available_tools": [", ".join(expected_tools + actual_tools)],
+            "expected_tools": [", ".join(expected_tools)],
+            "actual_tools": [", ".join(actual_tools) if actual_tools else "None"],
+        })
+
+        with _indented_output():
+            results = llm_classify(
+                dataframe=df,
+                model=model,
+                template=DISCRETE_TOOL_SELECTION_TEMPLATE,
+                rails=list(DISCRETE_SCALE_MAP.keys()),
+                provide_explanation=True,
+                concurrency=1,
+            )
+
+        if results.empty:
+            return 0.0, "Evaluation returned empty results"
+
+        row = results.iloc[0]
+        label = _safe_get_value(row, "label", "")
+        explanation = _safe_get_value(row, "explanation", "No explanation provided")
+        score = DISCRETE_SCALE_MAP.get(label, 0.0)
+        return score, explanation or f"Label: {label}"
+
+    def _evaluate_continuous_tool_selection(
+        self,
+        input_query: str,
+        expected_tools: list[str],
+        actual_tools: list[str],
+    ) -> tuple[float, str]:
+        """Evaluate tool selection using continuous 0.00-1.00 scale."""
+        model = self._get_model()
+        prompt = CONTINUOUS_TOOL_SELECTION_TEMPLATE.format(
+            input=input_query,
+            available_tools=", ".join(set(expected_tools + actual_tools)),
+            expected_tools=", ".join(expected_tools),
+            actual_tools=", ".join(actual_tools) if actual_tools else "None",
+        )
+
+        try:
+            response = model(prompt)
+            score, explanation = _parse_continuous_response(response)
+            return score, explanation
+        except Exception as e:
+            return 0.0, f"Evaluation error: {e}"
+
     async def evaluate_batch(
         self,
         test_cases: list[dict[str, Any]],
@@ -570,6 +838,8 @@ class PhoenixEvaluator:
                 - actual_output
                 - context (optional)
                 - expected_output (optional)
+                - expected_tools (optional)
+                - actual_tools_called (optional)
 
         Returns:
             List of EvaluationResult objects
@@ -583,6 +853,8 @@ class PhoenixEvaluator:
                 actual_output=tc["actual_output"],
                 context=tc.get("context"),
                 expected_output=tc.get("expected_output"),
+                expected_tools=tc.get("expected_tools"),
+                actual_tools_called=tc.get("actual_tools_called"),
             )
 
             overall_passed = all(s.passed for s in scores)

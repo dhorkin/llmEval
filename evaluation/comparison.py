@@ -47,6 +47,8 @@ class EvaluationComparison:
             actual_output=actual_output,
             context=context,
             expected_output=expected_output,
+            expected_tools=expected_tools,
+            actual_tools_called=actual_tools_called,
         )
 
         deepeval_scores = await self.deepeval_runner.evaluate(
@@ -97,6 +99,8 @@ class EvaluationComparison:
                 actual_output=tc["actual_output"],
                 context=tc.get("context"),
                 expected_output=tc.get("expected_output"),
+                expected_tools=tc.get("expected_tools"),
+                actual_tools_called=tc.get("actual_tools_called"),
             )
             
             if verbose:
@@ -249,14 +253,19 @@ class EvaluationComparison:
         deepeval_scores: list[EvaluationScore],
         phoenix_scores: list[EvaluationScore],
     ) -> list[tuple[str, float | None, float | None]]:
-        """Pair similar metrics from both frameworks."""
+        """Pair similar metrics from both frameworks.
+        
+        Always returns all 6 metrics, showing None (displayed as "-") when a 
+        metric wasn't run by either framework.
+        """
         pairs: list[tuple[str, float | None, float | None]] = []
 
         metric_mapping = {
             "relevance": ("deepeval_answer_relevancy", "phoenix_relevance"),
-            "faithfulness": ("deepeval_faithfulness", "phoenix_hallucination"),
-            "correctness": ("deepeval_answer_relevancy", "phoenix_qa_correctness"),
-            "tool_usage": ("deepeval_tool_correctness", None),
+            "hallucination": ("deepeval_hallucination", "phoenix_hallucination"),
+            "correctness": ("deepeval_correctness", "phoenix_qa_correctness"),
+            "faithfulness": ("deepeval_faithfulness", "phoenix_faithfulness"),
+            "tool_usage": ("deepeval_tool_correctness", "phoenix_tool_selection"),
             "schema": ("deepeval_schema_validation", None),
         }
 
@@ -266,9 +275,7 @@ class EvaluationComparison:
         for display_name, (de_name, ph_name) in metric_mapping.items():
             de_score = de_scores.get(de_name) if de_name else None
             ph_score = ph_scores.get(ph_name) if ph_name else None
-
-            if de_score is not None or ph_score is not None:
-                pairs.append((display_name, de_score, ph_score))
+            pairs.append((display_name, de_score, ph_score))
 
         return pairs
 
@@ -278,10 +285,11 @@ class EvaluationComparison:
         phoenix_scores: list[EvaluationScore],
         metric_pairs: list[tuple[str, float | None, float | None]],
     ) -> str:
-        """Generate a brief summary highlighting discrepancies between frameworks.
+        """Generate a brief summary of discrepancies and failures.
         
-        For continuous/discrete: Shows explanations for CLOSE and DIFFER cases.
-        For categorical: Shows explanations when frameworks disagree on pass/fail.
+        Reports:
+        - Discrepancies/variances when frameworks disagree on scores
+        - Metric failures even when frameworks agree or only one has the metric
         """
         de_by_name = {s.metric_name: s for s in deepeval_scores}
         ph_by_name = {s.metric_name: s for s in phoenix_scores}
@@ -290,30 +298,14 @@ class EvaluationComparison:
         metric_mapping = {
             "relevance": ("deepeval_answer_relevancy", "phoenix_relevance"),
             "hallucination": ("deepeval_hallucination", "phoenix_hallucination"),
-            "correctness": ("deepeval_answer_relevancy", "phoenix_qa_correctness"),
+            "correctness": ("deepeval_correctness", "phoenix_qa_correctness"),
+            "faithfulness": ("deepeval_faithfulness", "phoenix_faithfulness"),
+            "tool_usage": ("deepeval_tool_correctness", "phoenix_tool_selection"),
         }
 
-        discrepancies: list[str] = []
+        summaries: list[str] = []
 
         for display_name, de_score, ph_score in metric_pairs:
-            if de_score is None or ph_score is None:
-                continue
-            
-            # Determine if we should show this discrepancy
-            if eval_method == "categorical":
-                # For categorical: show when pass/fail disagrees
-                de_pass = de_score >= 0.5
-                ph_pass = ph_score >= 0.5
-                if de_pass == ph_pass:
-                    continue
-                severity = "Disagreement"
-            else:
-                # For continuous/discrete: use score difference
-                diff = abs(de_score - ph_score)
-                if diff < 0.1:
-                    continue
-                severity = "Discrepancy" if diff >= 0.2 else "Variance"
-
             mapping = metric_mapping.get(display_name)
             if not mapping:
                 continue
@@ -322,8 +314,28 @@ class EvaluationComparison:
             de_eval = de_by_name.get(de_name)
             ph_eval = ph_by_name.get(ph_name)
 
-            if de_eval and ph_eval:
-                # Determine which framework scored higher
+            # Check for failures (below threshold)
+            de_failed = de_eval and de_score is not None and de_score < de_eval.threshold
+            ph_failed = ph_eval and ph_score is not None and ph_score < ph_eval.threshold
+
+            # Check for discrepancy between frameworks
+            has_discrepancy = False
+            severity = ""
+            if de_score is not None and ph_score is not None:
+                if eval_method == "categorical":
+                    de_pass = de_score >= 0.5
+                    ph_pass = ph_score >= 0.5
+                    if de_pass != ph_pass:
+                        has_discrepancy = True
+                        severity = "Disagreement"
+                else:
+                    diff = abs(de_score - ph_score)
+                    if diff >= 0.1:
+                        has_discrepancy = True
+                        severity = "Discrepancy" if diff >= 0.2 else "Variance"
+
+            # Build summary for this metric
+            if has_discrepancy and de_eval and ph_eval:
                 if de_score > ph_score:
                     higher, lower = "DeepEval", "Phoenix"
                     higher_reason = self._normalize_reason(de_eval.reason)
@@ -333,14 +345,22 @@ class EvaluationComparison:
                     higher_reason = self._normalize_reason(ph_eval.reason)
                     lower_reason = self._normalize_reason(de_eval.reason)
 
-                discrepancies.append(
-                    f"{severity} ({display_name}): {higher} says {higher_reason}; {lower} says {lower_reason}"
+                summaries.append(
+                    f"{severity} ({display_name}): {higher} says {higher_reason.rstrip('.')}; {lower} says {lower_reason}"
                 )
+            elif de_failed or ph_failed:
+                # No discrepancy but at least one failure - report failures
+                parts = []
+                if de_failed and de_eval:
+                    reason = self._normalize_reason(de_eval.reason)
+                    parts.append(f"DeepEval: {reason}")
+                if ph_failed and ph_eval:
+                    reason = self._normalize_reason(ph_eval.reason)
+                    parts.append(f"Phoenix: {reason}")
+                if parts:
+                    summaries.append(f"Failed ({display_name}): {parts[0].rstrip('.')}; {parts[1]}" if len(parts) == 2 else f"Failed ({display_name}): {parts[0]}")
 
-        if not discrepancies:
-            return ""
-
-        return "\n".join(discrepancies)
+        return "\n".join(summaries)
 
     def _normalize_reason(self, reason: str | None) -> str:
         """Return the reason with the first letter lowercased, or a default if missing."""

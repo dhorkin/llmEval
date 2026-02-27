@@ -198,6 +198,7 @@ def evaluate(framework: str) -> None:
                     try:
                         response = await agent.run(tc["input_query"])
                         actual_tools = [t.tool_name for t in response.tool_calls]
+                        import json
                         api_results = [
                             {
                                 "tool_name": call.tool_name,
@@ -209,6 +210,16 @@ def evaluate(framework: str) -> None:
                             }
                             for call in response.tool_calls
                         ]
+                        # Build context from API results for faithfulness/hallucination evaluation
+                        # Context = the actual data the agent used to generate its response
+                        # Always include context if tools were called, even if results are None/empty
+                        context_entries = []
+                        for call in response.tool_calls:
+                            result_data = call.result if call.result is not None else {}
+                            result_str = json.dumps(result_data, indent=2, default=str)
+                            context_entries.append(
+                                f"[{call.tool_name}] Called with: {json.dumps(call.parameters, default=str)}\nResult:\n{result_str}"
+                            )
                         output_entry = {
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
@@ -216,7 +227,7 @@ def evaluate(framework: str) -> None:
                             "expected_output": tc.get("expected_output"),
                             "expected_tools": tc.get("expected_tools"),
                             "actual_tools_called": actual_tools,
-                            "context": [str(call) for call in response.tool_calls],
+                            "context": context_entries if context_entries else None,
                             "api_results": api_results,
                         }
                         agent_outputs.append(output_entry)
@@ -309,6 +320,7 @@ def pipeline() -> None:
                         total=None,
                     )
                     try:
+                        import json
                         response = await agent.run(tc["input_query"])
                         actual_tools = [tool_call.tool_name for tool_call in response.tool_calls]
                         api_results = [
@@ -322,6 +334,14 @@ def pipeline() -> None:
                             }
                             for call in response.tool_calls
                         ]
+                        # Build context from API results for faithfulness/hallucination evaluation
+                        context_entries = []
+                        for call in response.tool_calls:
+                            result_data = call.result if call.result is not None else {}
+                            result_str = json.dumps(result_data, indent=2, default=str)
+                            context_entries.append(
+                                f"[{call.tool_name}] Called with: {json.dumps(call.parameters, default=str)}\nResult:\n{result_str}"
+                            )
                         output_entry = {
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
@@ -329,6 +349,7 @@ def pipeline() -> None:
                             "expected_output": tc.get("expected_output"),
                             "expected_tools": tc.get("expected_tools"),
                             "actual_tools_called": actual_tools,
+                            "context": context_entries if context_entries else None,
                             "api_results": api_results,
                         }
                         agent_outputs.append(output_entry)
@@ -340,6 +361,7 @@ def pipeline() -> None:
                             "input_query": tc["input_query"],
                             "actual_output": f"Error: {e}",
                             "actual_tools_called": [],
+                            "context": None,
                             "api_results": [],
                         }
                         agent_outputs.append(error_entry)
