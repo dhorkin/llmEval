@@ -71,6 +71,12 @@ EVAL_RATE_LIMIT_INITIAL_RPS=0.1
 
 # Optional: Phoenix evaluation scoring method (default: categorical)
 PHOENIX_EVALUATION_METHOD=categorical  # Options: categorical, discrete, continuous
+
+# Optional: Minimum agreement threshold to pass (default: 0.8)
+MINIMUM_AGREEMENT_PASS_THRESHOLD=0.8  # Range: 0.0 - 1.0
+
+# Optional: Minimum individual metric score to pass (default: 0.7)
+MINIMUM_METRIC_PASS_THRESHOLD=0.7  # Range: 0.0 - 1.0
 ```
 
 ## Usage
@@ -151,6 +157,69 @@ Control how Phoenix scores responses using `PHOENIX_EVALUATION_METHOD`:
 - **categorical**: Fast evaluations, CI/CD pipelines where pass/fail is sufficient
 - **discrete**: More nuanced feedback while maintaining consistency across runs
 - **continuous**: Fine-grained scoring for detailed analysis and drift detection
+
+### Pass/Fail Thresholds
+
+A test case **passes** only if both conditions are met:
+1. Framework agreement is at or above `MINIMUM_AGREEMENT_PASS_THRESHOLD`
+2. All individual metrics are at or above `MINIMUM_METRIC_PASS_THRESHOLD`
+
+#### Agreement Threshold
+
+The `MINIMUM_AGREEMENT_PASS_THRESHOLD` setting controls how closely DeepEval and Phoenix must agree.
+
+**How agreement is calculated (varies by evaluation method):**
+
+| Method | Agreement Calculation |
+|--------|----------------------|
+| **continuous/discrete** | Average similarity: `1.0 - |DeepEval - Phoenix|` for each metric |
+| **categorical** | Percentage of metrics where both agree on pass/fail (score ≥ 0.5 = pass) |
+
+**Continuous/Discrete Example:**
+- Relevance: DeepEval=0.92, Phoenix=1.00 → similarity = 1.0 - 0.08 = 0.92
+- Correctness: DeepEval=0.92, Phoenix=0.75 → similarity = 1.0 - 0.17 = 0.83
+- Average agreement = (0.92 + 0.83) / 2 = **87.5%**
+
+**Categorical Example:**
+- Relevance: DeepEval=0.85 (pass), Phoenix=1.0 (pass) → **AGREE**
+- Hallucination: DeepEval=0.70 (pass), Phoenix=0.0 (fail) → **DIFFER**
+- Agreement = 1/2 = **50%**
+
+| Threshold | Use Case |
+|-----------|----------|
+| **0.9+** | High confidence required; strict consistency between evaluators |
+| **0.8** (default) | Balanced; allows minor variations while catching major disagreements |
+| **0.7** | More lenient; useful when evaluators have known methodology differences |
+
+#### Metric Threshold
+
+The `MINIMUM_METRIC_PASS_THRESHOLD` setting controls the minimum acceptable score for any individual metric from either framework.
+
+**Behavior by evaluation method:**
+
+| Method | Score Range | With Threshold 0.7 |
+|--------|-------------|-------------------|
+| **categorical** | 0.0 or 1.0 | 0.0 fails, 1.0 passes (no middle ground) |
+| **discrete** | 0.0, 0.25, 0.5, 0.75, 1.0 | 0.75 and 1.0 pass; others fail |
+| **continuous** | 0.00 - 1.00 | Any score ≥ 0.70 passes |
+
+**Example:**
+- If Phoenix hallucination = 0.60 and threshold = 0.7, the test **fails** (0.60 < 0.70)
+- If DeepEval relevance = 0.85 and threshold = 0.7, the metric **passes** (0.85 ≥ 0.70)
+
+| Threshold | Use Case |
+|-----------|----------|
+| **0.8+** | High quality bar; all metrics must score well |
+| **0.7** (default) | Balanced; catches clearly poor responses |
+| **0.5** | Lenient; only fails on very low scores |
+
+> **Note:** In categorical mode, thresholds between 0.0 and 1.0 effectively act as binary (only 0.0 fails, only 1.0 passes). Use discrete or continuous mode for more granular threshold control.
+
+**Why separate thresholds?**
+
+- **High agreement, low metric**: Frameworks agree the response is poor → should fail
+- **Low agreement, high metrics**: Frameworks disagree but both give decent scores → may indicate evaluation inconsistency
+- **Both thresholds**: Ensures responses are both high-quality AND consistently evaluated
 
 ## Drift Detection
 

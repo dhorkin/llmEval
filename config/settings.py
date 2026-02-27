@@ -71,6 +71,22 @@ class Settings(BaseModel):
         description="Phoenix scoring method: categorical (binary 0/1), discrete (5-point scale), continuous (0.00-1.00)",
     )
 
+    # Minimum agreement threshold for pass/fail determination
+    minimum_agreement_pass_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Minimum agreement percentage (0.0-1.0) required between frameworks to pass",
+    )
+
+    # Minimum individual metric threshold for pass/fail determination
+    minimum_metric_pass_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum score (0.0-1.0) for any individual metric to pass",
+    )
+
     model_config = {"extra": "ignore"}
 
 
@@ -91,4 +107,6 @@ def get_settings() -> Settings:
         max_tool_latency=float(os.getenv("MAX_TOOL_LATENCY", "2.0")),
         eval_rate_limit_initial_rps=float(os.getenv("EVAL_RATE_LIMIT_INITIAL_RPS", "0.1")),
         phoenix_evaluation_method=os.getenv("PHOENIX_EVALUATION_METHOD", "categorical"),  # type: ignore[arg-type]
+        minimum_agreement_pass_threshold=float(os.getenv("MINIMUM_AGREEMENT_PASS_THRESHOLD", "0.8")),
+        minimum_metric_pass_threshold=float(os.getenv("MINIMUM_METRIC_PASS_THRESHOLD", "0.7")),
     )

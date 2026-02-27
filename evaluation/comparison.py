@@ -147,6 +147,17 @@ class EvaluationComparison:
     def print_comparison_report(self, results: list[EvaluationResult]) -> None:
         """Print a formatted comparison report to console."""
         self.console.print("\n[bold blue]EVALUATION COMPARISON REPORT[/bold blue]\n")
+        
+        agreement_threshold = self.settings.minimum_agreement_pass_threshold
+        metric_threshold = self.settings.minimum_metric_pass_threshold
+        eval_method = self.settings.phoenix_evaluation_method
+        
+        # Warn about categorical mode limitations
+        if eval_method == "categorical":
+            self.console.print(
+                "[dim]Note: Using categorical mode (binary 0/1 scores). "
+                "Agreement reflects pass/fail alignment, not score similarity.[/dim]\n"
+            )
 
         for result in results:
             self.console.print(f"[bold]Test Case:[/bold] {result.test_case_id}")
@@ -168,13 +179,23 @@ class EvaluationComparison:
                 ph_str = f"{phoenix_score:.2f}" if phoenix_score is not None else "-"
 
                 if deepeval_score is not None and phoenix_score is not None:
-                    diff = abs(deepeval_score - phoenix_score)
-                    if diff < 0.1:
-                        status = "[green]AGREE[/green]"
-                    elif diff < 0.2:
-                        status = "[yellow]CLOSE[/yellow]"
+                    if eval_method == "categorical":
+                        # For categorical: check pass/fail alignment (0.5 threshold)
+                        de_pass = deepeval_score >= 0.5
+                        ph_pass = phoenix_score >= 0.5
+                        if de_pass == ph_pass:
+                            status = "[green]AGREE[/green]"
+                        else:
+                            status = "[red]DIFFER[/red]"
                     else:
-                        status = "[red]DIFFER[/red]"
+                        # For continuous/discrete: use score difference
+                        diff = abs(deepeval_score - phoenix_score)
+                        if diff < 0.1:
+                            status = "[green]AGREE[/green]"
+                        elif diff < 0.2:
+                            status = "[yellow]CLOSE[/yellow]"
+                        else:
+                            status = "[red]DIFFER[/red]"
                 else:
                     status = "[dim]N/A[/dim]"
 
@@ -189,18 +210,37 @@ class EvaluationComparison:
             if reason_summary:
                 self.console.print(f"[dim]{reason_summary}[/dim]")
 
+            # Collect failed individual metrics using configurable threshold
+            failed_metrics = self._get_failed_metrics(
+                result.deepeval_scores, result.phoenix_scores, metric_threshold
+            )
+            
             agreement = self._calculate_agreement(
                 result.deepeval_scores, result.phoenix_scores
             )
+            
+            # Determine pass/fail based on both thresholds
+            agreement_passed = agreement >= agreement_threshold
+            metrics_passed = len(failed_metrics) == 0
+            overall_passed = agreement_passed and metrics_passed
+            
             overall_status = (
                 "[green]PASSED[/green]"
-                if result.overall_passed
+                if overall_passed
                 else "[red]FAILED[/red]"
             )
 
             self.console.print(
                 f"Agreement: {agreement:.0%} | Overall: {overall_status}"
             )
+            
+            # Show failure explanation if failed
+            if not overall_passed:
+                self._print_failure_explanation(
+                    agreement, agreement_threshold, metric_threshold,
+                    failed_metrics, agreement_passed, metrics_passed
+                )
+            
             self.console.print("-" * 60)
             self.console.print()
 
@@ -238,13 +278,18 @@ class EvaluationComparison:
         phoenix_scores: list[EvaluationScore],
         metric_pairs: list[tuple[str, float | None, float | None]],
     ) -> str:
-        """Generate a brief summary highlighting discrepancies between frameworks."""
+        """Generate a brief summary highlighting discrepancies between frameworks.
+        
+        For continuous/discrete: Shows explanations for CLOSE and DIFFER cases.
+        For categorical: Shows explanations when frameworks disagree on pass/fail.
+        """
         de_by_name = {s.metric_name: s for s in deepeval_scores}
         ph_by_name = {s.metric_name: s for s in phoenix_scores}
+        eval_method = self.settings.phoenix_evaluation_method
 
         metric_mapping = {
             "relevance": ("deepeval_answer_relevancy", "phoenix_relevance"),
-            "faithfulness": ("deepeval_faithfulness", "phoenix_hallucination"),
+            "hallucination": ("deepeval_hallucination", "phoenix_hallucination"),
             "correctness": ("deepeval_answer_relevancy", "phoenix_qa_correctness"),
         }
 
@@ -253,9 +298,21 @@ class EvaluationComparison:
         for display_name, de_score, ph_score in metric_pairs:
             if de_score is None or ph_score is None:
                 continue
-            diff = abs(de_score - ph_score)
-            if diff < 0.2:
-                continue
+            
+            # Determine if we should show this discrepancy
+            if eval_method == "categorical":
+                # For categorical: show when pass/fail disagrees
+                de_pass = de_score >= 0.5
+                ph_pass = ph_score >= 0.5
+                if de_pass == ph_pass:
+                    continue
+                severity = "Disagreement"
+            else:
+                # For continuous/discrete: use score difference
+                diff = abs(de_score - ph_score)
+                if diff < 0.1:
+                    continue
+                severity = "Discrepancy" if diff >= 0.2 else "Variance"
 
             mapping = metric_mapping.get(display_name)
             if not mapping:
@@ -277,7 +334,7 @@ class EvaluationComparison:
                     lower_reason = self._normalize_reason(de_eval.reason)
 
                 discrepancies.append(
-                    f"Discrepancy ({display_name}): {higher} says {higher_reason}; {lower} says {lower_reason}"
+                    f"{severity} ({display_name}): {higher} says {higher_reason}; {lower} says {lower_reason}"
                 )
 
         if not discrepancies:
@@ -294,12 +351,88 @@ class EvaluationComparison:
             return "no reason"
         return stripped[0].lower() + stripped[1:]
 
+    def _get_failed_metrics(
+        self,
+        deepeval_scores: list[EvaluationScore],
+        phoenix_scores: list[EvaluationScore],
+        metric_threshold: float | None = None,
+    ) -> list[tuple[str, str, float, float, str]]:
+        """Get list of metrics that failed the minimum metric threshold.
+        
+        Args:
+            deepeval_scores: DeepEval evaluation scores
+            phoenix_scores: Phoenix evaluation scores
+            metric_threshold: Minimum score threshold. If None, uses each metric's own threshold.
+        
+        Returns list of tuples: (framework, metric_name, score, threshold, reason)
+        """
+        failed: list[tuple[str, str, float, float, str]] = []
+        threshold = metric_threshold if metric_threshold is not None else None
+        
+        for score in deepeval_scores:
+            effective_threshold = threshold if threshold is not None else score.threshold
+            if score.score < effective_threshold:
+                failed.append((
+                    "DeepEval",
+                    score.metric_name.replace("deepeval_", ""),
+                    score.score,
+                    effective_threshold,
+                    score.reason or "No reason provided",
+                ))
+        
+        for score in phoenix_scores:
+            effective_threshold = threshold if threshold is not None else score.threshold
+            if score.score < effective_threshold:
+                failed.append((
+                    "Phoenix",
+                    score.metric_name.replace("phoenix_", ""),
+                    score.score,
+                    effective_threshold,
+                    score.reason or "No reason provided",
+                ))
+        
+        return failed
+
+    def _print_failure_explanation(
+        self,
+        agreement: float,
+        agreement_threshold: float,
+        metric_threshold: float,
+        failed_metrics: list[tuple[str, str, float, float, str]],
+        agreement_passed: bool,
+        metrics_passed: bool,
+    ) -> None:
+        """Print detailed explanation of why the test case failed."""
+        self.console.print()
+        
+        if not agreement_passed:
+            self.console.print(
+                f"[yellow]⚠ Agreement ({agreement:.0%}) below threshold ({agreement_threshold:.0%})[/yellow]"
+            )
+        
+        if not metrics_passed:
+            self.console.print(
+                f"[yellow]⚠ Metrics below minimum threshold ({metric_threshold:.0%}):[/yellow]"
+            )
+            for framework, metric, score, thresh, reason in failed_metrics:
+                # Truncate reason if too long
+                reason_short = reason[:80] + "..." if len(reason) > 80 else reason
+                self.console.print(
+                    f"  [dim]• {framework} {metric}: {score:.2f} < {thresh:.2f}[/dim]"
+                )
+                self.console.print(f"    [dim italic]{reason_short}[/dim italic]")
+
     def _calculate_agreement(
         self,
         deepeval_scores: list[EvaluationScore],
         phoenix_scores: list[EvaluationScore],
     ) -> float:
-        """Calculate agreement percentage between frameworks."""
+        """Calculate agreement percentage between frameworks.
+        
+        For continuous/discrete modes: Returns average similarity (1 - normalized_diff).
+        For categorical mode: Returns percentage of metrics where both frameworks
+        agree on pass/fail (using 0.5 as the threshold for binary classification).
+        """
         pairs = self._pair_metrics(deepeval_scores, phoenix_scores)
         comparable = [
             (de, ph) for _, de, ph in pairs if de is not None and ph is not None
@@ -308,11 +441,20 @@ class EvaluationComparison:
         if not comparable:
             return 1.0
 
-        agreements = sum(
-            1 for de, ph in comparable if abs(de - ph) < 0.2
-        )
-
-        return agreements / len(comparable)
+        eval_method = self.settings.phoenix_evaluation_method
+        
+        if eval_method == "categorical":
+            # For categorical mode, check pass/fail alignment
+            # Both scores are considered "pass" if >= 0.5, "fail" if < 0.5
+            agreements = sum(
+                1 for de, ph in comparable
+                if (de >= 0.5) == (ph >= 0.5)
+            )
+            return agreements / len(comparable)
+        else:
+            # For continuous/discrete, use score similarity
+            similarities = [1.0 - abs(de - ph) for de, ph in comparable]
+            return sum(similarities) / len(comparable)
 
     def save_results(
         self,
