@@ -10,13 +10,13 @@ from dotenv import load_dotenv
 # Load environment variables BEFORE importing deepeval to ensure API keys are available
 load_dotenv()
 
-from deepeval import evaluate
-from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, HallucinationMetric, GEval, BaseMetric
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+from deepeval import evaluate  # noqa: E402
+from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, HallucinationMetric, GEval, BaseMetric  # noqa: E402
+from deepeval.test_case import LLMTestCase, LLMTestCaseParams  # noqa: E402
 
-from config.settings import get_settings
-from evaluation.rate_limiter import get_rate_limiter
-from models.schemas import EvaluationResult, EvaluationScore
+from config.settings import get_settings  # noqa: E402
+from evaluation.rate_limiter import get_rate_limiter  # noqa: E402
+from models.schemas import EvaluationResult, EvaluationScore  # noqa: E402
 
 # Indentation for nested log output (matches phoenix_eval.py)
 LOG_INDENT = "    "
@@ -38,11 +38,11 @@ class ToolCorrectnessMetric(BaseMetric):
         self._reason: str = ""
 
     @property
-    def score(self) -> float:
+    def score(self) -> float:  # type: ignore[override]
         return self._score
 
     @property
-    def reason(self) -> str:
+    def reason(self) -> str:  # type: ignore[override]
         return self._reason
 
     @property
@@ -100,11 +100,11 @@ class SchemaValidationMetric(BaseMetric):
         self._reason: str = ""
 
     @property
-    def score(self) -> float:
+    def score(self) -> float:  # type: ignore[override]
         return self._score
 
     @property
-    def reason(self) -> str:
+    def reason(self) -> str:  # type: ignore[override]
         return self._reason
 
     @property
@@ -121,7 +121,7 @@ class SchemaValidationMetric(BaseMetric):
 
     def measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
         """Verify output follows expected schema."""
-        actual_output = test_case.actual_output
+        actual_output = test_case.actual_output or ""
 
         required_fields = ["type", "query"]
         found_fields = []
@@ -223,7 +223,7 @@ class DeepEvalRunner:
             scores.append(
                 EvaluationScore(
                     metric_name="deepeval_answer_relevancy",
-                    score=relevancy_metric.score,
+                    score=relevancy_metric.score if relevancy_metric.score is not None else 0.0,
                     passed=relevancy_metric.is_successful(),
                     threshold=0.7,
                     reason=relevancy_metric.reason,
@@ -268,7 +268,7 @@ class DeepEvalRunner:
                 scores.append(
                     EvaluationScore(
                         metric_name="deepeval_correctness",
-                        score=correctness_metric.score,
+                        score=correctness_metric.score if correctness_metric.score is not None else 0.0,
                         passed=correctness_metric.is_successful(),
                         threshold=0.7,
                         reason=correctness_metric.reason,
@@ -303,7 +303,7 @@ class DeepEvalRunner:
                 scores.append(
                     EvaluationScore(
                         metric_name="deepeval_faithfulness",
-                        score=faithfulness_metric.score,
+                        score=faithfulness_metric.score if faithfulness_metric.score is not None else 0.0,
                         passed=faithfulness_metric.is_successful(),
                         threshold=0.8,
                         reason=faithfulness_metric.reason,
@@ -334,7 +334,8 @@ class DeepEvalRunner:
                     service_name="DeepEval",
                     metric_name="hallucination",
                 )
-                hallucination_score = 1.0 - hallucination_metric.score
+                raw_score = hallucination_metric.score if hallucination_metric.score is not None else 0.0
+                hallucination_score = 1.0 - raw_score
                 # Update reason to reflect inverted score (DeepEval uses higher=worse,
                 # but we invert to higher=better for consistency)
                 original_reason = hallucination_metric.reason or ""
@@ -484,4 +485,4 @@ class DeepEvalRunner:
             AnswerRelevancyMetric(threshold=0.7, model=self._model),
         ]
 
-        evaluate(test_cases=test_cases, metrics=metrics)
+        evaluate(test_cases=test_cases, metrics=metrics)  # type: ignore[operator]

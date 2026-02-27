@@ -6,7 +6,6 @@ import asyncio
 import json
 import os
 import signal
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -18,7 +17,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from agent.planner import AgentPlanner
-from config.settings import get_settings
 from evaluation.comparison import EvaluationComparison
 from evaluation.deepeval_runner import DeepEvalRunner
 from evaluation.phoenix_eval import PhoenixEvaluator
@@ -32,7 +30,7 @@ _agent_outputs: list[dict[str, Any]] = []
 _comparison_instance: EvaluationComparison | None = None
 
 
-def _handle_sigint(signum, frame):
+def _handle_sigint(signum: int, frame: Any) -> None:
     """Handle Ctrl+C by saving partial results and exiting immediately."""
     console.print("\n\n[yellow]Interrupted by user.[/yellow]")
     
@@ -196,7 +194,7 @@ def evaluate(framework: str) -> None:
                 for tc in TEST_CASES:
                     task = progress.add_task(f"Running {tc['test_case_id']}...", total=None)
                     try:
-                        response = await agent.run(tc["input_query"])
+                        response = await agent.run(str(tc["input_query"]))
                         actual_tools = [t.tool_name for t in response.tool_calls]
                         import json
                         api_results = [
@@ -268,14 +266,14 @@ def evaluate(framework: str) -> None:
             for i, tc in enumerate(agent_outputs, 1):
                 console.print(f"  [{i}/{total}] Evaluating [cyan]{tc['test_case_id']}[/cyan]...")
                 result = await comparison.evaluate_with_both(
-                    test_case_id=tc["test_case_id"],
-                    input_query=tc["input_query"],
-                    actual_output=tc["actual_output"],
-                    context=tc.get("context"),
-                    expected_output=tc.get("expected_output"),
-                    expected_tools=tc.get("expected_tools"),
-                    actual_tools_called=tc.get("actual_tools_called"),
-                    api_results=tc.get("api_results"),
+                    test_case_id=str(tc["test_case_id"]),
+                    input_query=str(tc["input_query"]),
+                    actual_output=str(tc["actual_output"]),
+                    context=tc.get("context") if isinstance(tc.get("context"), list) else None,  # type: ignore[arg-type]
+                    expected_output=str(tc["expected_output"]) if tc.get("expected_output") else None,
+                    expected_tools=tc.get("expected_tools") if isinstance(tc.get("expected_tools"), list) else None,  # type: ignore[arg-type]
+                    actual_tools_called=tc.get("actual_tools_called") if isinstance(tc.get("actual_tools_called"), list) else None,  # type: ignore[arg-type]
+                    api_results=tc.get("api_results") if isinstance(tc.get("api_results"), list) else None,  # type: ignore[arg-type]
                 )
                 _partial_results.append(result)
             
@@ -321,7 +319,7 @@ def pipeline() -> None:
                     )
                     try:
                         import json
-                        response = await agent.run(tc["input_query"])
+                        response = await agent.run(str(tc["input_query"]))
                         actual_tools = [tool_call.tool_name for tool_call in response.tool_calls]
                         api_results = [
                             {
@@ -376,14 +374,14 @@ def pipeline() -> None:
         for i, tc in enumerate(agent_outputs, 1):
             console.print(f"  [{i}/{total}] Evaluating [cyan]{tc['test_case_id']}[/cyan]...")
             result = await comparison.evaluate_with_both(
-                test_case_id=tc["test_case_id"],
-                input_query=tc["input_query"],
-                actual_output=tc["actual_output"],
-                context=tc.get("context"),
-                expected_output=tc.get("expected_output"),
-                expected_tools=tc.get("expected_tools"),
-                actual_tools_called=tc.get("actual_tools_called"),
-                api_results=tc.get("api_results"),
+                test_case_id=str(tc["test_case_id"]),
+                input_query=str(tc["input_query"]),
+                actual_output=str(tc["actual_output"]),
+                context=tc.get("context") if isinstance(tc.get("context"), list) else None,  # type: ignore[arg-type]
+                expected_output=str(tc["expected_output"]) if tc.get("expected_output") else None,
+                expected_tools=tc.get("expected_tools") if isinstance(tc.get("expected_tools"), list) else None,  # type: ignore[arg-type]
+                actual_tools_called=tc.get("actual_tools_called") if isinstance(tc.get("actual_tools_called"), list) else None,  # type: ignore[arg-type]
+                api_results=tc.get("api_results") if isinstance(tc.get("api_results"), list) else None,  # type: ignore[arg-type]
             )
             _partial_results.append(result)
             console.print(f"    [green]✓[/green] Complete ({len(result.phoenix_scores)} Phoenix, {len(result.deepeval_scores)} DeepEval metrics)")

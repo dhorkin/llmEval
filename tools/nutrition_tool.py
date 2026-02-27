@@ -260,7 +260,7 @@ class NutritionTool(BaseTool):
             "required": ["diet_type"],
         }
 
-    async def execute(
+    async def execute(  # type: ignore[override]
         self,
         diet_type: str,
         restrictions: list[str] | None = None,
@@ -310,17 +310,6 @@ class NutritionTool(BaseTool):
         self, diet_type: str, restrictions: list[str]
     ) -> str | None:
         """Check for conflicts between diet and restrictions."""
-        conflicts = {
-            ("vegan", "beef"): None,
-            ("vegan", "chicken"): None,
-            ("vegan", "fish"): None,
-            ("vegan", "pork"): None,
-            ("vegetarian", "beef"): None,
-            ("vegetarian", "chicken"): None,
-            ("vegetarian", "fish"): None,
-            ("vegetarian", "pork"): None,
-        }
-
         meat_in_vegan = any(r in ["beef", "chicken", "pork", "fish"] for r in restrictions)
         if diet_type == "vegan" and meat_in_vegan:
             return None

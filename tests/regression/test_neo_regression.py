@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from syrupy.assertion import SnapshotAssertion
 
 from decision_engine.rules import DecisionEngine

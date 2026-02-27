@@ -179,13 +179,6 @@ class AgentPlanner:
 
         is_valid, error = self.decision_engine.validate_date(start_date)
         if not is_valid:
-            from models.schemas import NEOFeedResult
-            empty_result = NEOFeedResult(
-                start_date=start_date,
-                end_date=end_date,
-                element_count=0,
-                near_earth_objects=[],
-            )
             report = NEOReport(
                 type="NEO_REPORT",
                 query=query,
@@ -422,7 +415,7 @@ Format your response as JSON:
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
-                print(f"[Agent] Theme analysis: LLM rate limited, using fallback")
+                print("[Agent] Theme analysis: LLM rate limited, using fallback")
             elif "Empty response" in error_msg or "HTML error" in error_msg:
                 print(f"[Agent] Theme analysis: {error_msg}, using fallback")
             else:
@@ -466,19 +459,19 @@ Format your response as JSON:
             fallback_result = f"Poem '{poem.title}' by {poem.author} ({poem.linecount} lines)."
             
             if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
-                print(f"[Agent] Poem analysis: LLM rate limited")
+                print("[Agent] Poem analysis: LLM rate limited")
                 return fallback_result, ["Analysis skipped: API rate limited"]
             elif "Empty response" in error_msg:
-                print(f"[Agent] Poem analysis: Empty LLM response (possible rate limit)")
+                print("[Agent] Poem analysis: Empty LLM response (possible rate limit)")
                 return fallback_result, ["Analysis skipped: Empty API response"]
             elif "HTML error" in error_msg:
-                print(f"[Agent] Poem analysis: Received HTML error page (likely rate limited)")
+                print("[Agent] Poem analysis: Received HTML error page (likely rate limited)")
                 return fallback_result, ["Analysis skipped: API returned error page"]
             else:
                 print(f"[Agent] Poem analysis failed ({type(e).__name__}): {error_msg}")
                 return fallback_result, [f"Analysis failed: {type(e).__name__}"]
 
-    def _parse_llm_json_response(self, response: str, context: str = "LLM") -> dict:
+    def _parse_llm_json_response(self, response: str, context: str = "LLM") -> dict[str, Any]:
         """Parse JSON from LLM response with diagnostic error handling.
         
         Args:
@@ -514,7 +507,8 @@ Format your response as JSON:
             cleaned = "\n".join(json_lines).strip()
         
         try:
-            return json.loads(cleaned)
+            result: dict[str, Any] = json.loads(cleaned)
+            return result
         except json.JSONDecodeError as e:
             preview = response[:100] + "..." if len(response) > 100 else response
             raise ValueError(f"Invalid JSON from {context}: {e}. Response preview: {preview!r}")
@@ -545,7 +539,9 @@ Format your response as JSON:
             messages=[{"role": "user", "content": prompt}],
         )
         if response.content and len(response.content) > 0:
-            return response.content[0].text
+            block = response.content[0]
+            if hasattr(block, "text"):
+                return str(block.text)
         return ""
 
     def _generate_reasoning(

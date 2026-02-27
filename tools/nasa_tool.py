@@ -47,7 +47,7 @@ class NASATool(BaseTool):
         """Get NASA API key, falling back to DEMO_KEY."""
         return self.settings.nasa_api_key or "DEMO_KEY"
 
-    async def execute(
+    async def execute(  # type: ignore[override]
         self,
         start_date: str,
         end_date: str,

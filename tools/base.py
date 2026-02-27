@@ -126,10 +126,9 @@ class BaseTool(ABC):
         """HTTP POST with retry."""
         return await self._request_with_retry("POST", url, **kwargs)
 
-    @abstractmethod
     async def execute(self, **kwargs: Any) -> Any:
-        """Execute the tool with given parameters."""
-        ...
+        """Execute the tool with given parameters. Subclasses override with specific signatures."""
+        raise NotImplementedError
 
     def get_schema(self) -> dict[str, Any]:
         """Get tool schema for LLM function calling."""

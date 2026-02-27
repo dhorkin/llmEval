@@ -40,7 +40,7 @@ def sample_nutrition_query() -> str:
 
 
 @pytest.fixture
-def test_cases() -> list[dict[str, str]]:
+def test_cases() -> list[dict[str, str | list[str]]]:
     """Standard test cases for evaluation."""
     return [
         {

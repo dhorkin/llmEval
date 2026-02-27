@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from decision_engine.rules import DecisionEngine
 from tools.book_tool import BookTool
 from tools.nasa_tool import NASATool

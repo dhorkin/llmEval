@@ -14,19 +14,19 @@ from dotenv import load_dotenv
 # Load environment variables BEFORE importing phoenix to ensure API keys are available
 load_dotenv()
 
-import nest_asyncio
-import pandas as pd
-from phoenix.evals import (
+import nest_asyncio  # noqa: E402
+import pandas as pd  # noqa: E402
+from phoenix.evals import (  # noqa: E402
     HallucinationEvaluator,
     QAEvaluator,
     RelevanceEvaluator,
     llm_classify,
     run_evals,
 )
-from phoenix.evals.models import OpenAIModel
+from phoenix.evals.models import OpenAIModel  # noqa: E402
 
-from config.settings import get_settings
-from models.schemas import EvaluationResult, EvaluationScore
+from config.settings import get_settings  # noqa: E402
+from models.schemas import EvaluationResult, EvaluationScore  # noqa: E402
 
 PhoenixEvalMethod = Literal["categorical", "discrete", "continuous"]
 
@@ -43,7 +43,7 @@ class _IndentedWriter:
     # Extra indent for progress bars (they are sub-tasks)
     PROGRESS_BAR_EXTRA_INDENT = "  "
     
-    def __init__(self, original, prefix: str):
+    def __init__(self, original: Any, prefix: str) -> None:
         self._original = original
         self._prefix = prefix
         self._progress_prefix = prefix + self.PROGRESS_BAR_EXTRA_INDENT
@@ -95,17 +95,18 @@ class _IndentedWriter:
         elif self._at_line_start:
             text = prefix + text
         self._at_line_start = text.endswith("\n")
-        return self._original.write(text)
+        result: int = self._original.write(text)
+        return result
     
-    def flush(self):
+    def flush(self) -> None:
         self._original.flush()
     
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._original, name)
 
 
 @contextmanager
-def _indented_output(prefix: str = LOG_INDENT):
+def _indented_output(prefix: str = LOG_INDENT) -> Any:
     """Context manager that adds indentation to stdout/stderr output."""
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -658,6 +659,7 @@ class PhoenixEvaluator:
 
     def _evaluate_categorical_hallucination(self, df: pd.DataFrame) -> tuple[float, str]:
         """Evaluate hallucination using categorical (binary) mode."""
+        assert self._hallucination_eval is not None, "Evaluators not initialized"
         with _indented_output():
             results = run_evals(
                 dataframe=df,
@@ -675,6 +677,7 @@ class PhoenixEvaluator:
 
     def _evaluate_categorical_qa(self, df: pd.DataFrame) -> tuple[float, str]:
         """Evaluate QA correctness using categorical (binary) mode."""
+        assert self._qa_eval is not None, "Evaluators not initialized"
         with _indented_output():
             results = run_evals(
                 dataframe=df,
@@ -692,6 +695,7 @@ class PhoenixEvaluator:
 
     def _evaluate_categorical_relevance(self, df: pd.DataFrame) -> tuple[float, str]:
         """Evaluate relevance using categorical (binary) mode."""
+        assert self._relevance_eval is not None, "Evaluators not initialized"
         with _indented_output():
             results = run_evals(
                 dataframe=df,

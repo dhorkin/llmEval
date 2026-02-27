@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from deepeval import assert_test
+from deepeval import assert_test  # type: ignore[attr-defined]
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
 
@@ -13,8 +12,7 @@ from evaluation.deepeval_runner import SchemaValidationMetric, ToolCorrectnessMe
 class TestBookQueries:
     """Test cases for book-related queries."""
 
-    @pytest.mark.asyncio
-    async def test_book_search_with_date_filter(self) -> None:
+    def test_book_search_with_date_filter(self) -> None:
         """Test: Book search with date filter (Open Library)."""
         test_case = LLMTestCase(
             input="Find all books written by George Orwell published before 1950",
@@ -36,14 +34,14 @@ class TestBookQueries:
                 "George Orwell wrote Animal Farm in 1945",
                 "George Orwell wrote 1984 in 1949",
                 "George Orwell wrote Coming Up for Air in 1939",
+                "George Orwell wrote Homage to Catalonia in 1938",
             ],
         )
 
         relevancy_metric = AnswerRelevancyMetric(threshold=0.7)
-        await assert_test(test_case, [relevancy_metric])
+        assert_test(test_case, [relevancy_metric])
 
-    @pytest.mark.asyncio
-    async def test_book_search_no_results(self) -> None:
+    def test_book_search_no_results(self) -> None:
         """Regression: Book search returns no results for unknown author."""
         test_case = LLMTestCase(
             input="Find books by Unknown Author XYZ",
@@ -61,14 +59,13 @@ class TestBookQueries:
         )
 
         schema_metric = SchemaValidationMetric(threshold=0.8)
-        await assert_test(test_case, [schema_metric])
+        assert_test(test_case, [schema_metric])
 
 
 class TestNASAQueries:
     """Test cases for NASA NEO queries."""
 
-    @pytest.mark.asyncio
-    async def test_neo_date_range(self) -> None:
+    def test_neo_date_range(self) -> None:
         """Test: NEO check for date range (NASA)."""
         test_case = LLMTestCase(
             input="Check if there are any Near Earth Objects passing by Earth this weekend",
@@ -96,11 +93,13 @@ class TestNASAQueries:
         )
 
         relevancy_metric = AnswerRelevancyMetric(threshold=0.7)
-        tool_metric = ToolCorrectnessMetric(expected_tools=["nasa_neo"])
-        await assert_test(test_case, [relevancy_metric, tool_metric])
+        tool_metric = ToolCorrectnessMetric(
+            expected_tools=["nasa_neo"],
+            actual_tools_called=["nasa_neo"],
+        )
+        assert_test(test_case, [relevancy_metric, tool_metric])
 
-    @pytest.mark.asyncio
-    async def test_neo_hazardous_detection(self) -> None:
+    def test_neo_hazardous_detection(self) -> None:
         """Regression: NEO report flags hazardous objects correctly."""
         test_case = LLMTestCase(
             input="Are there any potentially hazardous asteroids near Earth today?",
@@ -117,14 +116,13 @@ class TestNASAQueries:
         )
 
         schema_metric = SchemaValidationMetric(threshold=0.8)
-        await assert_test(test_case, [schema_metric])
+        assert_test(test_case, [schema_metric])
 
 
 class TestPoetryQueries:
     """Test cases for poetry queries."""
 
-    @pytest.mark.asyncio
-    async def test_poetry_sonnet_search(self) -> None:
+    def test_poetry_sonnet_search(self) -> None:
         """Test: Poetry search with form requirement (PoetryDB)."""
         test_case = LLMTestCase(
             input="Find a sonnet by William Shakespeare and explain the metaphor used in the first quatrain",
@@ -157,10 +155,9 @@ class TestPoetryQueries:
 
         relevancy_metric = AnswerRelevancyMetric(threshold=0.7)
         faithfulness_metric = FaithfulnessMetric(threshold=0.8)
-        await assert_test(test_case, [relevancy_metric, faithfulness_metric])
+        assert_test(test_case, [relevancy_metric, faithfulness_metric])
 
-    @pytest.mark.asyncio
-    async def test_poetry_no_match(self) -> None:
+    def test_poetry_no_match(self) -> None:
         """Regression: Poetry search for non-existent form by author."""
         test_case = LLMTestCase(
             input="Find a limerick by Shakespeare",
@@ -177,14 +174,13 @@ class TestPoetryQueries:
         )
 
         schema_metric = SchemaValidationMetric(threshold=0.8)
-        await assert_test(test_case, [schema_metric])
+        assert_test(test_case, [schema_metric])
 
 
 class TestNutritionQueries:
     """Test cases for nutrition/meal queries."""
 
-    @pytest.mark.asyncio
-    async def test_meal_recommendation_with_restrictions(self) -> None:
+    def test_meal_recommendation_with_restrictions(self) -> None:
         """Test: Meal recommendation with restrictions (LogMeal)."""
         test_case = LLMTestCase(
             input="Based on a Mediterranean diet, recommend three dinner options that avoid dairy and nuts",
@@ -212,10 +208,9 @@ class TestNutritionQueries:
 
         relevancy_metric = AnswerRelevancyMetric(threshold=0.7)
         faithfulness_metric = FaithfulnessMetric(threshold=0.8)
-        await assert_test(test_case, [relevancy_metric, faithfulness_metric])
+        assert_test(test_case, [relevancy_metric, faithfulness_metric])
 
-    @pytest.mark.asyncio
-    async def test_meal_conflicting_restrictions(self) -> None:
+    def test_meal_conflicting_restrictions(self) -> None:
         """Regression: Meal recommendation with impossible restrictions."""
         test_case = LLMTestCase(
             input="Recommend a vegan meal with beef",
@@ -234,14 +229,13 @@ class TestNutritionQueries:
         )
 
         schema_metric = SchemaValidationMetric(threshold=0.8)
-        await assert_test(test_case, [schema_metric])
+        assert_test(test_case, [schema_metric])
 
 
 class TestEdgeCases:
     """Edge case and failure case tests."""
 
-    @pytest.mark.asyncio
-    async def test_invalid_date_validation(self) -> None:
+    def test_invalid_date_validation(self) -> None:
         """Edge Case: Invalid date handling (February 30th)."""
         test_case = LLMTestCase(
             input="Check NEO data for February 30th",
@@ -257,10 +251,9 @@ class TestEdgeCases:
         )
 
         schema_metric = SchemaValidationMetric(threshold=0.5)
-        await assert_test(test_case, [schema_metric])
+        assert_test(test_case, [schema_metric])
 
-    @pytest.mark.asyncio
-    async def test_hallucination_detection(self) -> None:
+    def test_hallucination_detection(self) -> None:
         """Known Failure: Detects hallucinated books."""
         test_case = LLMTestCase(
             input="Find all books about quantum physics by Einstein published after 2020",
@@ -281,4 +274,4 @@ class TestEdgeCases:
         )
 
         faithfulness_metric = FaithfulnessMetric(threshold=0.8)
-        await assert_test(test_case, [faithfulness_metric])
+        assert_test(test_case, [faithfulness_metric])

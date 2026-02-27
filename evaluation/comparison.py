@@ -360,7 +360,7 @@ class EvaluationComparison:
                         severity = "Discrepancy" if diff >= 0.2 else "Variance"
 
             # Build summary for this metric
-            if has_discrepancy and de_eval and ph_eval:
+            if has_discrepancy and de_eval and ph_eval and de_score is not None and ph_score is not None:
                 if de_score > ph_score:
                     higher, lower = "DeepEval", "Phoenix"
                     higher_reason = self._normalize_reason(de_eval.reason)

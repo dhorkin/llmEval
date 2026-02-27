@@ -50,7 +50,7 @@ class PoetryTool(BaseTool):
             "required": [],
         }
 
-    async def execute(
+    async def execute(  # type: ignore[override]
         self,
         author: str | None = None,
         title: str | None = None,

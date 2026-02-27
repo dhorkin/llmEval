@@ -54,7 +54,7 @@ class BookTool(BaseTool):
             "required": ["author"],
         }
 
-    async def execute(
+    async def execute(  # type: ignore[override]
         self,
         author: str,
         title: str | None = None,
@@ -142,7 +142,8 @@ class BookTool(BaseTool):
             data = response.json()
             description = data.get("description")
             if isinstance(description, dict):
-                return description.get("value")
-            return description
+                value = description.get("value")
+                return str(value) if value is not None else None
+            return str(description) if description is not None else None
         except Exception:
             return None

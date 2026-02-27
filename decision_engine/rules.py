@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Literal
 
 from models.schemas import (
     BookAnalysisReport,

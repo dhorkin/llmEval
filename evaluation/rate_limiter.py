@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TypeVar, Callable, Any
-from functools import wraps
+from typing import TypeVar, Callable, Any, cast
 
 T = TypeVar("T")
 
@@ -113,7 +112,7 @@ class RateLimiter:
                     result = func(*args, **kwargs)
                 
                 self.recover()
-                return result
+                return cast(T, result)
                 
             except rate_limit_exceptions as e:
                 last_exception = e
