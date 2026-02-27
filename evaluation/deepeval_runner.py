@@ -18,6 +18,9 @@ from config.settings import get_settings
 from evaluation.rate_limiter import get_rate_limiter
 from models.schemas import EvaluationResult, EvaluationScore
 
+# Indentation for nested log output (matches phoenix_eval.py)
+LOG_INDENT = "    "
+
 
 class ToolCorrectnessMetric(BaseMetric):
     """Custom metric to verify correct tools were called."""
@@ -204,6 +207,7 @@ class DeepEvalRunner:
             retrieval_context=context,
         )
 
+        print(f"{LOG_INDENT}[DeepEval] Running answer relevancy eval...")
         try:
             relevancy_metric = AnswerRelevancyMetric(
                 threshold=0.7,
@@ -224,7 +228,9 @@ class DeepEvalRunner:
                     reason=relevancy_metric.reason,
                 )
             )
+            print(f"{LOG_INDENT}[DeepEval] Answer relevancy complete: {relevancy_metric.score:.2f}")
         except Exception as e:
+            print(f"{LOG_INDENT}[DeepEval] Answer relevancy failed: {e}")
             scores.append(
                 EvaluationScore(
                     metric_name="deepeval_answer_relevancy",
@@ -236,6 +242,7 @@ class DeepEvalRunner:
             )
 
         if context:
+            print(f"{LOG_INDENT}[DeepEval] Running faithfulness eval...")
             try:
                 faithfulness_metric = FaithfulnessMetric(
                     threshold=0.8,
@@ -256,7 +263,9 @@ class DeepEvalRunner:
                         reason=faithfulness_metric.reason,
                     )
                 )
+                print(f"{LOG_INDENT}[DeepEval] Faithfulness complete: {faithfulness_metric.score:.2f}")
             except Exception as e:
+                print(f"{LOG_INDENT}[DeepEval] Faithfulness failed: {e}")
                 scores.append(
                     EvaluationScore(
                         metric_name="deepeval_faithfulness",
@@ -268,6 +277,7 @@ class DeepEvalRunner:
                 )
 
         if expected_tools:
+            print(f"{LOG_INDENT}[DeepEval] Running tool correctness eval...")
             try:
                 tool_metric = ToolCorrectnessMetric(
                     expected_tools=expected_tools,
@@ -284,7 +294,9 @@ class DeepEvalRunner:
                         reason=tool_metric.reason,
                     )
                 )
+                print(f"{LOG_INDENT}[DeepEval] Tool correctness complete: {tool_metric.score:.2f}")
             except Exception as e:
+                print(f"{LOG_INDENT}[DeepEval] Tool correctness failed: {e}")
                 scores.append(
                     EvaluationScore(
                         metric_name="deepeval_tool_correctness",
@@ -295,6 +307,7 @@ class DeepEvalRunner:
                     )
                 )
 
+        print(f"{LOG_INDENT}[DeepEval] Running schema validation eval...")
         try:
             schema_metric = SchemaValidationMetric(threshold=0.8)
             schema_metric.measure(test_case)
@@ -307,7 +320,9 @@ class DeepEvalRunner:
                     reason=schema_metric.reason,
                 )
             )
+            print(f"{LOG_INDENT}[DeepEval] Schema validation complete: {schema_metric.score:.2f}")
         except Exception as e:
+            print(f"{LOG_INDENT}[DeepEval] Schema validation failed: {e}")
             scores.append(
                 EvaluationScore(
                     metric_name="deepeval_schema_validation",

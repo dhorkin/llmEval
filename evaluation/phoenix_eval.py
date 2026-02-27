@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sys
+from contextlib import contextmanager
 from typing import Any
 
 from dotenv import load_dotenv
@@ -25,6 +27,90 @@ from models.schemas import EvaluationResult, EvaluationScore
 
 # Apply nest_asyncio to suppress Phoenix's notebook warning and enable proper async handling
 nest_asyncio.apply()
+
+# Indentation for nested log output
+LOG_INDENT = "    "
+
+
+class _IndentedWriter:
+    """Wrapper that adds indentation prefix to each line of output."""
+    
+    # Extra indent for progress bars (they are sub-tasks)
+    PROGRESS_BAR_EXTRA_INDENT = "  "
+    
+    def __init__(self, original, prefix: str):
+        self._original = original
+        self._prefix = prefix
+        self._progress_prefix = prefix + self.PROGRESS_BAR_EXTRA_INDENT
+        self._at_line_start = True
+    
+    def _shorten_progress_bar(self, text: str, shorten_by: int) -> str:
+        """Shorten tqdm progress bar by removing characters from the bar portion."""
+        import re
+        # Match progress bar pattern: |████████████████| or similar
+        pattern = r"\|([█░▒▓ ]+)\|"
+        match = re.search(pattern, text)
+        if match:
+            bar = match.group(1)
+            if len(bar) > shorten_by + 10:
+                # Remove characters from the bar
+                new_len = len(bar) - shorten_by
+                new_bar = bar[:new_len]
+                text = text[:match.start(1)] + new_bar + text[match.end(1):]
+        return text
+    
+    def _is_progress_bar(self, text: str) -> bool:
+        """Check if text is a tqdm progress bar line."""
+        # Match common Phoenix progress bar prefixes
+        progress_prefixes = ("run_evals", "llm_classify", "evaluate")
+        return "|" in text and any(p in text for p in progress_prefixes)
+    
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        
+        # Check if this is a progress bar line
+        is_progress_bar = self._is_progress_bar(text)
+        
+        if is_progress_bar:
+            # Suppress initial 0% progress lines
+            if "0/1 (0.0%)" in text or "(0.0%)" in text:
+                return 0
+            # Shorten progress bar to compensate for extra indentation
+            text = self._shorten_progress_bar(text, len(self._progress_prefix))
+            prefix = self._progress_prefix
+        else:
+            prefix = self._prefix
+        
+        # Handle carriage return (used by tqdm for progress bar updates)
+        if "\r" in text:
+            text = text.replace("\r", f"\r{prefix}")
+            if not text.startswith(prefix):
+                text = prefix + text
+        elif self._at_line_start:
+            text = prefix + text
+        self._at_line_start = text.endswith("\n")
+        return self._original.write(text)
+    
+    def flush(self):
+        self._original.flush()
+    
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
+
+@contextmanager
+def _indented_output(prefix: str = LOG_INDENT):
+    """Context manager that adds indentation to stdout/stderr output."""
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = _IndentedWriter(old_stdout, prefix)
+    sys.stderr = _IndentedWriter(old_stderr, prefix)
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 
 def _safe_get_value(series: pd.Series, key: str, default: Any = None) -> Any:
@@ -112,13 +198,14 @@ class PhoenixEvaluator:
         scores: list[EvaluationScore] = []
 
         try:
-            print(f"           [Phoenix] Running hallucination eval...")
-            hallucination_results = run_evals(
-                dataframe=df,
-                evaluators=[self._hallucination_eval],
-                provide_explanation=True,
-                concurrency=1,
-            )
+            print(f"{LOG_INDENT}[Phoenix] Running hallucination eval...")
+            with _indented_output():
+                hallucination_results = run_evals(
+                    dataframe=df,
+                    evaluators=[self._hallucination_eval],
+                    provide_explanation=True,
+                    concurrency=1,
+                )
             if not hallucination_results[0].empty:
                 row = hallucination_results[0].iloc[0]
                 label = _safe_get_value(row, "label", "")
@@ -143,9 +230,9 @@ class PhoenixEvaluator:
                         reason="Evaluation returned empty results",
                     )
                 )
-            print(f"           [Phoenix] Hallucination eval complete")
+            print(f"{LOG_INDENT}[Phoenix] Hallucination eval complete")
         except Exception as e:
-            print(f"           [Phoenix] Hallucination eval failed: {e}")
+            print(f"{LOG_INDENT}[Phoenix] Hallucination eval failed: {e}")
             scores.append(
                 EvaluationScore(
                     metric_name="phoenix_hallucination",
@@ -157,7 +244,7 @@ class PhoenixEvaluator:
             )
 
         try:
-            print(f"           [Phoenix] Running QA correctness eval...")
+            print(f"{LOG_INDENT}[Phoenix] Running QA correctness eval...")
             qa_df = pd.DataFrame(
                 {
                     "input": [input_query],
@@ -165,12 +252,13 @@ class PhoenixEvaluator:
                     "reference": [expected_output or actual_output],
                 }
             )
-            qa_results = run_evals(
-                dataframe=qa_df,
-                evaluators=[self._qa_eval],
-                provide_explanation=True,
-                concurrency=1,
-            )
+            with _indented_output():
+                qa_results = run_evals(
+                    dataframe=qa_df,
+                    evaluators=[self._qa_eval],
+                    provide_explanation=True,
+                    concurrency=1,
+                )
             if not qa_results[0].empty:
                 row = qa_results[0].iloc[0]
                 label = _safe_get_value(row, "label", "")
@@ -195,9 +283,9 @@ class PhoenixEvaluator:
                         reason="Evaluation returned empty results",
                     )
                 )
-            print(f"           [Phoenix] QA correctness eval complete")
+            print(f"{LOG_INDENT}[Phoenix] QA correctness eval complete")
         except Exception as e:
-            print(f"           [Phoenix] QA correctness eval failed: {e}")
+            print(f"{LOG_INDENT}[Phoenix] QA correctness eval failed: {e}")
             scores.append(
                 EvaluationScore(
                     metric_name="phoenix_qa_correctness",
@@ -209,7 +297,7 @@ class PhoenixEvaluator:
             )
 
         try:
-            print(f"           [Phoenix] Running relevance eval...")
+            print(f"{LOG_INDENT}[Phoenix] Running relevance eval...")
             # For relevance, use the query + expected output as reference context
             # This evaluates whether the output is relevant to answering the query
             relevance_reference = input_query
@@ -225,12 +313,13 @@ class PhoenixEvaluator:
                     "reference": [relevance_reference],
                 }
             )
-            relevance_results = run_evals(
-                dataframe=relevance_df,
-                evaluators=[self._relevance_eval],
-                provide_explanation=True,
-                concurrency=1,
-            )
+            with _indented_output():
+                relevance_results = run_evals(
+                    dataframe=relevance_df,
+                    evaluators=[self._relevance_eval],
+                    provide_explanation=True,
+                    concurrency=1,
+                )
             if not relevance_results[0].empty:
                 row = relevance_results[0].iloc[0]
                 label = _safe_get_value(row, "label", "")
@@ -255,9 +344,9 @@ class PhoenixEvaluator:
                         reason="Evaluation returned empty results",
                     )
                 )
-            print(f"           [Phoenix] Relevance eval complete")
+            print(f"{LOG_INDENT}[Phoenix] Relevance eval complete")
         except Exception as e:
-            print(f"           [Phoenix] Relevance eval failed: {e}")
+            print(f"{LOG_INDENT}[Phoenix] Relevance eval failed: {e}")
             scores.append(
                 EvaluationScore(
                     metric_name="phoenix_relevance",

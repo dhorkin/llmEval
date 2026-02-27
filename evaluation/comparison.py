@@ -99,7 +99,7 @@ class EvaluationComparison:
             
             if verbose:
                 self.console.print(
-                    f"         [green]✓[/green] Phoenix complete "
+                    f"    [green]✓[/green] Phoenix complete "
                     f"({len(phoenix_scores)} metrics)"
                 )
 
@@ -115,7 +115,7 @@ class EvaluationComparison:
             
             if verbose:
                 self.console.print(
-                    f"         [green]✓[/green] DeepEval complete "
+                    f"    [green]✓[/green] DeepEval complete "
                     f"({len(deepeval_scores)} metrics)"
                 )
 
