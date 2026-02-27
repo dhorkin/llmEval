@@ -68,6 +68,9 @@ LOGMEAL_API_KEY=your-logmeal-key  # Get at https://logmeal.es/
 
 # Optional: Rate limiting for evaluation (default 0.1 = 10s between requests)
 EVAL_RATE_LIMIT_INITIAL_RPS=0.1
+
+# Optional: Phoenix evaluation scoring method (default: categorical)
+PHOENIX_EVALUATION_METHOD=categorical  # Options: categorical, discrete, continuous
 ```
 
 ## Usage
@@ -132,6 +135,22 @@ python main.py drift-check
 | **Hallucination** | Does output contain fabricated info? | 0.8 |
 | **QA Correctness** | Is the answer factually correct? | 0.7 |
 | **Relevance** | Is output relevant to the input? | 0.7 |
+
+### Phoenix Evaluation Methods
+
+Control how Phoenix scores responses using `PHOENIX_EVALUATION_METHOD`:
+
+| Method | Score Range | Description |
+|--------|-------------|-------------|
+| **categorical** | 0.0 or 1.0 | Built-in evaluators return text labels (e.g., "factual"/"hallucinated", "correct"/"incorrect", "relevant"/"unrelated") which are mapped to binary 0.0 or 1.0 scores (default) |
+| **discrete** | 0.0, 0.25, 0.5, 0.75, 1.0 | 5-point scale (excellent/good/fair/poor/very_poor) |
+| **continuous** | 0.00 - 1.00 | Numeric scores with 2 decimal precision |
+
+**When to use each method:**
+
+- **categorical**: Fast evaluations, CI/CD pipelines where pass/fail is sufficient
+- **discrete**: More nuanced feedback while maintaining consistency across runs
+- **continuous**: Fine-grained scoring for detailed analysis and drift detection
 
 ## Drift Detection
 

@@ -65,6 +65,12 @@ class Settings(BaseModel):
         description="Requests per second for evaluation LLM calls (default 0.1 = 10s between requests)",
     )
 
+    # Phoenix evaluation method
+    phoenix_evaluation_method: Literal["categorical", "discrete", "continuous"] = Field(
+        default="categorical",
+        description="Phoenix scoring method: categorical (binary 0/1), discrete (5-point scale), continuous (0.00-1.00)",
+    )
+
     model_config = {"extra": "ignore"}
 
 
@@ -84,4 +90,5 @@ def get_settings() -> Settings:
         llm_temperature=float(os.getenv("LLM_TEMPERATURE", "0.1")),
         max_tool_latency=float(os.getenv("MAX_TOOL_LATENCY", "2.0")),
         eval_rate_limit_initial_rps=float(os.getenv("EVAL_RATE_LIMIT_INITIAL_RPS", "0.1")),
+        phoenix_evaluation_method=os.getenv("PHOENIX_EVALUATION_METHOD", "categorical"),  # type: ignore[arg-type]
     )
