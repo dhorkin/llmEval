@@ -148,9 +148,34 @@ class EvaluationComparison:
 
         return results
 
+    def print_metrics_guide(self) -> None:
+        """Print a guide explaining what each evaluation metric measures."""
+        metric_threshold = self.settings.minimum_metric_pass_threshold
+        
+        self.console.print("\n[bold cyan]EVALUATION METRICS GUIDE[/bold cyan]")
+        self.console.print("-" * 40)
+        self.console.print(
+            f"Pass threshold: [yellow]{metric_threshold}[/yellow] "
+            "(configurable via MINIMUM_METRIC_PASS_THRESHOLD)\n"
+        )
+        
+        self.console.print("Metrics (evaluated by both DeepEval and Phoenix):")
+        self.console.print("  [dim]•[/dim] [bold]Relevance[/bold]: Is the output relevant to the query?")
+        self.console.print("  [dim]•[/dim] [bold]Correctness[/bold]: Is the answer factually correct?")
+        self.console.print("  [dim]•[/dim] [bold]Faithfulness[/bold]: Does output only contain info from context?")
+        self.console.print("  [dim]•[/dim] [bold]Hallucination[/bold]: Is the output free of fabricated info?")
+        self.console.print("    [italic dim]* DeepEval score is INVERTED (1.0 - raw) so higher = better[/dim italic]")
+        self.console.print("  [dim]•[/dim] [bold]Tool Correctness[/bold]: Were the correct tools called?")
+        self.console.print("  [dim]•[/dim] [bold]Schema[/bold]: Does output match expected schema? [dim](DeepEval only)[/dim]")
+        self.console.print()
+        self.console.print("[dim]All metrics use 0.0-1.0 scale where higher = better quality.[/dim]")
+        self.console.print()
+
     def print_comparison_report(self, results: list[EvaluationResult]) -> None:
         """Print a formatted comparison report to console."""
-        self.console.print("\n[bold blue]EVALUATION COMPARISON REPORT[/bold blue]\n")
+        self.print_metrics_guide()
+        
+        self.console.print("[bold blue]EVALUATION COMPARISON REPORT[/bold blue]\n")
         
         agreement_threshold = self.settings.minimum_agreement_pass_threshold
         metric_threshold = self.settings.minimum_metric_pass_threshold
@@ -432,7 +457,7 @@ class EvaluationComparison:
         
         if not metrics_passed:
             self.console.print(
-                f"[yellow]⚠ Metrics below minimum threshold ({metric_threshold:.0%}):[/yellow]"
+                f"[yellow]⚠ Metrics below minimum threshold ({metric_threshold}):[/yellow]"
             )
             for framework, metric, score, thresh, reason in failed_metrics:
                 # Truncate reason if too long
