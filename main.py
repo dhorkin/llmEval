@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import signal
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +25,34 @@ from evaluation.phoenix_eval import PhoenixEvaluator
 
 
 console = Console()
+
+# Global state for partial result saving on interrupt
+_partial_results: list[Any] = []
+_comparison_instance: EvaluationComparison | None = None
+
+
+def _handle_sigint(signum, frame):
+    """Handle Ctrl+C by saving partial results and exiting immediately."""
+    console.print("\n\n[yellow]Interrupted by user.[/yellow]")
+    
+    if _partial_results and _comparison_instance:
+        try:
+            filepath = _comparison_instance.save_results(
+                _partial_results, 
+                filename=f"evaluation_{datetime.now().strftime('%Y%m%d_%H%M%S')}_partial.json"
+            )
+            console.print(f"[green]Saved {len(_partial_results)} partial results to: {filepath}[/green]")
+        except Exception as e:
+            console.print(f"[red]Failed to save partial results: {e}[/red]")
+    elif _partial_results:
+        console.print(f"[yellow]Had {len(_partial_results)} results but no comparison instance to save.[/yellow]")
+    else:
+        console.print("[dim]No partial results to save.[/dim]")
+    
+    os._exit(130)
+
+
+signal.signal(signal.SIGINT, _handle_sigint)
 
 
 TEST_CASES = [
@@ -117,11 +147,16 @@ def query(query: str) -> None:
 )
 def evaluate(framework: str) -> None:
     """Run evaluation on predefined test cases."""
+    global _partial_results, _comparison_instance
+    
     console.print(Panel(f"Running {framework} evaluation", title="Evaluation"))
 
     async def run() -> None:
+        global _partial_results, _comparison_instance
+        
         agent = AgentPlanner()
-        results: list[dict[str, Any]] = []
+        agent_outputs: list[dict[str, Any]] = []
+        _partial_results = []
 
         try:
             console.print("\n[bold]Generating agent outputs...[/bold]")
@@ -135,8 +170,8 @@ def evaluate(framework: str) -> None:
                     task = progress.add_task(f"Running {tc['test_case_id']}...", total=None)
                     try:
                         response = await agent.run(tc["input_query"])
-                        actual_tools = [tc.tool_name for tc in response.tool_calls]
-                        results.append({
+                        actual_tools = [t.tool_name for t in response.tool_calls]
+                        agent_outputs.append({
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": response.report.model_dump_json(),
@@ -146,7 +181,7 @@ def evaluate(framework: str) -> None:
                             "context": [str(call) for call in response.tool_calls],
                         })
                     except Exception as e:
-                        results.append({
+                        agent_outputs.append({
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": f"Error: {e}",
@@ -162,20 +197,34 @@ def evaluate(framework: str) -> None:
 
         if framework == "deepeval":
             runner = DeepEvalRunner()
-            eval_results = await runner.evaluate_batch(results)
+            eval_results = await runner.evaluate_batch(agent_outputs)
             _print_eval_results(eval_results, "DeepEval")
 
         elif framework == "phoenix":
             evaluator = PhoenixEvaluator()
-            eval_results = await evaluator.evaluate_batch(results)
+            eval_results = await evaluator.evaluate_batch(agent_outputs)
             _print_eval_results(eval_results, "Phoenix")
 
         else:
             comparison = EvaluationComparison()
-            eval_results = await comparison.evaluate_batch_with_both(results)
-            comparison.print_comparison_report(eval_results)
-
-            filepath = comparison.save_results(eval_results)
+            _comparison_instance = comparison
+            
+            total = len(agent_outputs)
+            for i, tc in enumerate(agent_outputs, 1):
+                console.print(f"  [{i}/{total}] Evaluating [cyan]{tc['test_case_id']}[/cyan]...")
+                result = await comparison.evaluate_with_both(
+                    test_case_id=tc["test_case_id"],
+                    input_query=tc["input_query"],
+                    actual_output=tc["actual_output"],
+                    context=tc.get("context"),
+                    expected_output=tc.get("expected_output"),
+                    expected_tools=tc.get("expected_tools"),
+                    actual_tools_called=tc.get("actual_tools_called"),
+                )
+                _partial_results.append(result)
+            
+            comparison.print_comparison_report(_partial_results)
+            filepath = comparison.save_results(_partial_results)
             console.print(f"\n[dim]Results saved to: {filepath}[/dim]")
 
     asyncio.run(run())
@@ -184,17 +233,23 @@ def evaluate(framework: str) -> None:
 @cli.command()
 def pipeline() -> None:
     """Run full pipeline: generate inputs, run agent, evaluate, log."""
+    global _partial_results, _comparison_instance
+    
     console.print(Panel("Full Pipeline Execution", title="Pipeline"))
 
     async def run() -> None:
+        global _partial_results, _comparison_instance
+        
         agent = AgentPlanner()
         comparison = EvaluationComparison()
+        _comparison_instance = comparison
+        _partial_results = []
 
         console.print("\n[bold]Step 1: Generating test inputs[/bold]")
         console.print(f"  Using {len(TEST_CASES)} predefined test cases")
 
         console.print("\n[bold]Step 2: Running agent on test cases[/bold]")
-        results: list[dict[str, Any]] = []
+        agent_outputs: list[dict[str, Any]] = []
 
         try:
             with Progress(
@@ -210,7 +265,7 @@ def pipeline() -> None:
                     try:
                         response = await agent.run(tc["input_query"])
                         actual_tools = [tool_call.tool_name for tool_call in response.tool_calls]
-                        results.append({
+                        agent_outputs.append({
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": response.report.model_dump_json(),
@@ -220,7 +275,7 @@ def pipeline() -> None:
                         })
                     except Exception as e:
                         console.print(f"  [red]Error on {tc['test_case_id']}: {e}[/red]")
-                        results.append({
+                        agent_outputs.append({
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": f"Error: {e}",
@@ -232,16 +287,29 @@ def pipeline() -> None:
             await agent.close()
 
         console.print("\n[bold]Step 3: Evaluating with both frameworks[/bold]")
-        eval_results = await comparison.evaluate_batch_with_both(results)
+        total = len(agent_outputs)
+        for i, tc in enumerate(agent_outputs, 1):
+            console.print(f"  [{i}/{total}] Evaluating [cyan]{tc['test_case_id']}[/cyan]...")
+            result = await comparison.evaluate_with_both(
+                test_case_id=tc["test_case_id"],
+                input_query=tc["input_query"],
+                actual_output=tc["actual_output"],
+                context=tc.get("context"),
+                expected_output=tc.get("expected_output"),
+                expected_tools=tc.get("expected_tools"),
+                actual_tools_called=tc.get("actual_tools_called"),
+            )
+            _partial_results.append(result)
+            console.print(f"    [green]✓[/green] Complete ({len(result.phoenix_scores)} Phoenix, {len(result.deepeval_scores)} DeepEval metrics)")
 
         console.print("\n[bold]Step 4: Generating comparison report[/bold]")
-        comparison.print_comparison_report(eval_results)
+        comparison.print_comparison_report(_partial_results)
 
         console.print("\n[bold]Step 5: Logging results[/bold]")
-        filepath = comparison.save_results(eval_results)
+        filepath = comparison.save_results(_partial_results)
         console.print(f"  Results saved to: {filepath}")
 
-        summary = _generate_pipeline_summary(eval_results)
+        summary = _generate_pipeline_summary(_partial_results)
         _print_pipeline_summary(summary)
 
     asyncio.run(run())
