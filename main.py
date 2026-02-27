@@ -28,6 +28,7 @@ console = Console()
 
 # Global state for partial result saving on interrupt
 _partial_results: list[Any] = []
+_agent_outputs: list[dict[str, Any]] = []
 _comparison_instance: EvaluationComparison | None = None
 
 
@@ -35,18 +36,43 @@ def _handle_sigint(signum, frame):
     """Handle Ctrl+C by saving partial results and exiting immediately."""
     console.print("\n\n[yellow]Interrupted by user.[/yellow]")
     
+    saved_something = False
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Save evaluation results if we have any
     if _partial_results and _comparison_instance:
         try:
             filepath = _comparison_instance.save_results(
                 _partial_results, 
-                filename=f"evaluation_{datetime.now().strftime('%Y%m%d_%H%M%S')}_partial.json"
+                filename=f"evaluation_{timestamp}_partial.json"
             )
-            console.print(f"[green]Saved {len(_partial_results)} partial results to: {filepath}[/green]")
+            console.print(f"[green]Saved {len(_partial_results)} evaluation results to: {filepath}[/green]")
+            saved_something = True
         except Exception as e:
-            console.print(f"[red]Failed to save partial results: {e}[/red]")
-    elif _partial_results:
-        console.print(f"[yellow]Had {len(_partial_results)} results but no comparison instance to save.[/yellow]")
-    else:
+            console.print(f"[red]Failed to save evaluation results: {e}[/red]")
+    
+    # Save agent outputs (API call results) if we have any beyond what's already evaluated
+    unevaluated_outputs = _agent_outputs[len(_partial_results):]
+    if unevaluated_outputs or (_agent_outputs and not _partial_results):
+        outputs_to_save = _agent_outputs if not _partial_results else unevaluated_outputs
+        try:
+            filepath = logs_dir / f"agent_outputs_{timestamp}_partial.json"
+            with open(filepath, "w") as f:
+                json.dump({
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "interrupted",
+                    "total_collected": len(_agent_outputs),
+                    "evaluated": len(_partial_results),
+                    "agent_outputs": outputs_to_save,
+                }, f, indent=2)
+            console.print(f"[green]Saved {len(outputs_to_save)} agent outputs (API results) to: {filepath}[/green]")
+            saved_something = True
+        except Exception as e:
+            console.print(f"[red]Failed to save agent outputs: {e}[/red]")
+    
+    if not saved_something:
         console.print("[dim]No partial results to save.[/dim]")
     
     os._exit(130)
@@ -147,16 +173,17 @@ def query(query: str) -> None:
 )
 def evaluate(framework: str) -> None:
     """Run evaluation on predefined test cases."""
-    global _partial_results, _comparison_instance
+    global _partial_results, _comparison_instance, _agent_outputs
     
     console.print(Panel(f"Running {framework} evaluation", title="Evaluation"))
 
     async def run() -> None:
-        global _partial_results, _comparison_instance
+        global _partial_results, _comparison_instance, _agent_outputs
         
         agent = AgentPlanner()
         agent_outputs: list[dict[str, Any]] = []
         _partial_results = []
+        _agent_outputs = []
 
         try:
             console.print("\n[bold]Generating agent outputs...[/bold]")
@@ -171,7 +198,18 @@ def evaluate(framework: str) -> None:
                     try:
                         response = await agent.run(tc["input_query"])
                         actual_tools = [t.tool_name for t in response.tool_calls]
-                        agent_outputs.append({
+                        api_results = [
+                            {
+                                "tool_name": call.tool_name,
+                                "parameters": call.parameters,
+                                "result": call.result,
+                                "success": call.success,
+                                "error_message": call.error_message,
+                                "latency_ms": call.latency_ms,
+                            }
+                            for call in response.tool_calls
+                        ]
+                        output_entry = {
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": response.report.model_dump_json(),
@@ -179,15 +217,21 @@ def evaluate(framework: str) -> None:
                             "expected_tools": tc.get("expected_tools"),
                             "actual_tools_called": actual_tools,
                             "context": [str(call) for call in response.tool_calls],
-                        })
+                            "api_results": api_results,
+                        }
+                        agent_outputs.append(output_entry)
+                        _agent_outputs.append(output_entry)
                     except Exception as e:
-                        agent_outputs.append({
+                        error_entry = {
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": f"Error: {e}",
                             "expected_output": tc.get("expected_output"),
                             "actual_tools_called": [],
-                        })
+                            "api_results": [],
+                        }
+                        agent_outputs.append(error_entry)
+                        _agent_outputs.append(error_entry)
                     progress.update(task, completed=True)
 
         finally:
@@ -220,6 +264,7 @@ def evaluate(framework: str) -> None:
                     expected_output=tc.get("expected_output"),
                     expected_tools=tc.get("expected_tools"),
                     actual_tools_called=tc.get("actual_tools_called"),
+                    api_results=tc.get("api_results"),
                 )
                 _partial_results.append(result)
             
@@ -233,17 +278,18 @@ def evaluate(framework: str) -> None:
 @cli.command()
 def pipeline() -> None:
     """Run full pipeline: generate inputs, run agent, evaluate, log."""
-    global _partial_results, _comparison_instance
+    global _partial_results, _comparison_instance, _agent_outputs
     
     console.print(Panel("Full Pipeline Execution", title="Pipeline"))
 
     async def run() -> None:
-        global _partial_results, _comparison_instance
+        global _partial_results, _comparison_instance, _agent_outputs
         
         agent = AgentPlanner()
         comparison = EvaluationComparison()
         _comparison_instance = comparison
         _partial_results = []
+        _agent_outputs = []
 
         console.print("\n[bold]Step 1: Generating test inputs[/bold]")
         console.print(f"  Using {len(TEST_CASES)} predefined test cases")
@@ -265,22 +311,39 @@ def pipeline() -> None:
                     try:
                         response = await agent.run(tc["input_query"])
                         actual_tools = [tool_call.tool_name for tool_call in response.tool_calls]
-                        agent_outputs.append({
+                        api_results = [
+                            {
+                                "tool_name": call.tool_name,
+                                "parameters": call.parameters,
+                                "result": call.result,
+                                "success": call.success,
+                                "error_message": call.error_message,
+                                "latency_ms": call.latency_ms,
+                            }
+                            for call in response.tool_calls
+                        ]
+                        output_entry = {
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": response.report.model_dump_json(),
                             "expected_output": tc.get("expected_output"),
                             "expected_tools": tc.get("expected_tools"),
                             "actual_tools_called": actual_tools,
-                        })
+                            "api_results": api_results,
+                        }
+                        agent_outputs.append(output_entry)
+                        _agent_outputs.append(output_entry)
                     except Exception as e:
                         console.print(f"  [red]Error on {tc['test_case_id']}: {e}[/red]")
-                        agent_outputs.append({
+                        error_entry = {
                             "test_case_id": tc["test_case_id"],
                             "input_query": tc["input_query"],
                             "actual_output": f"Error: {e}",
                             "actual_tools_called": [],
-                        })
+                            "api_results": [],
+                        }
+                        agent_outputs.append(error_entry)
+                        _agent_outputs.append(error_entry)
                     progress.update(task, completed=True)
 
         finally:
@@ -298,6 +361,7 @@ def pipeline() -> None:
                 expected_output=tc.get("expected_output"),
                 expected_tools=tc.get("expected_tools"),
                 actual_tools_called=tc.get("actual_tools_called"),
+                api_results=tc.get("api_results"),
             )
             _partial_results.append(result)
             console.print(f"    [green]✓[/green] Complete ({len(result.phoenix_scores)} Phoenix, {len(result.deepeval_scores)} DeepEval metrics)")

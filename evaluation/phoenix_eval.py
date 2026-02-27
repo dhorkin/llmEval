@@ -593,6 +593,7 @@ class PhoenixEvaluator:
                 actual_output=tc["actual_output"],
                 expected_output=tc.get("expected_output"),
                 context=tc.get("context", []),
+                api_results=tc.get("api_results", []),
                 deepeval_scores=[],
                 phoenix_scores=scores,
                 overall_passed=overall_passed,

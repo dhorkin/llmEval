@@ -34,6 +34,7 @@ class EvaluationComparison:
         expected_output: str | None = None,
         expected_tools: list[str] | None = None,
         actual_tools_called: list[str] | None = None,
+        api_results: list[dict[str, Any]] | None = None,
     ) -> EvaluationResult:
         """
         Run both Phoenix and DeepEval evaluations on a single test case.
@@ -67,6 +68,7 @@ class EvaluationComparison:
             actual_output=actual_output,
             expected_output=expected_output,
             context=context or [],
+            api_results=api_results or [],
             deepeval_scores=deepeval_scores,
             phoenix_scores=phoenix_scores,
             overall_passed=overall_passed,
@@ -128,6 +130,7 @@ class EvaluationComparison:
                 actual_output=tc["actual_output"],
                 expected_output=tc.get("expected_output"),
                 context=tc.get("context") or [],
+                api_results=tc.get("api_results") or [],
                 deepeval_scores=deepeval_scores,
                 phoenix_scores=phoenix_scores,
                 overall_passed=overall_passed,

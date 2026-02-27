@@ -271,6 +271,10 @@ class EvaluationResult(BaseModel):
     context: list[str] = Field(
         default_factory=list, description="Context/retrieval context"
     )
+    api_results: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Raw API results from tool calls for human review and debugging"
+    )
     deepeval_scores: list[EvaluationScore] = Field(
         default_factory=list, description="DeepEval metric scores"
     )
