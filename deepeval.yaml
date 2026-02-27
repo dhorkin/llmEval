@@ -1,0 +1,23 @@
+# DeepEval Configuration
+# https://docs.deepeval.com/
+
+version: 1
+
+# Test configuration
+test:
+  # Minimum score thresholds
+  thresholds:
+    faithfulness: 0.8
+    answer_relevancy: 0.7
+    
+  # Fail on threshold violations
+  fail_on_threshold: true
+
+# Metrics configuration
+metrics:
+  - name: AnswerRelevancyMetric
+    threshold: 0.7
+  - name: FaithfulnessMetric
+    threshold: 0.8
+  - name: ToolCorrectnessMetric
+    threshold: 1.0

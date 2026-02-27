@@ -1,0 +1,26 @@
+# Requires Python 3.9 - 3.13 (evaluation frameworks do not support 3.14+)
+
+# Core
+openai>=1.0.0
+anthropic>=0.18.0
+pydantic>=2.0.0
+httpx>=0.25.0
+python-dotenv>=1.0.0
+rich>=13.0.0
+pandas>=2.0.0
+
+# Evaluation - DeepEval (requires Python <3.14)
+deepeval>=2.2.0
+
+# Evaluation - Phoenix (requires Python <3.14)
+arize-phoenix>=8.0.0
+arize-phoenix-evals>=0.17.0
+arize-phoenix-otel>=0.5.0
+nest-asyncio>=1.5.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# Type Checking
+mypy>=1.8.0
