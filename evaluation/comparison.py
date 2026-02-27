@@ -179,6 +179,13 @@ class EvaluationComparison:
 
             self.console.print(table)
 
+            # Print brief reason summary highlighting discrepancies
+            reason_summary = self._summarize_reasons(
+                result.deepeval_scores, result.phoenix_scores, metric_pairs
+            )
+            if reason_summary:
+                self.console.print(f"[dim]{reason_summary}[/dim]")
+
             agreement = self._calculate_agreement(
                 result.deepeval_scores, result.phoenix_scores
             )
@@ -221,6 +228,68 @@ class EvaluationComparison:
                 pairs.append((display_name, de_score, ph_score))
 
         return pairs
+
+    def _summarize_reasons(
+        self,
+        deepeval_scores: list[EvaluationScore],
+        phoenix_scores: list[EvaluationScore],
+        metric_pairs: list[tuple[str, float | None, float | None]],
+    ) -> str:
+        """Generate a brief summary highlighting discrepancies between frameworks."""
+        de_by_name = {s.metric_name: s for s in deepeval_scores}
+        ph_by_name = {s.metric_name: s for s in phoenix_scores}
+
+        metric_mapping = {
+            "relevance": ("deepeval_answer_relevancy", "phoenix_relevance"),
+            "faithfulness": ("deepeval_faithfulness", "phoenix_hallucination"),
+            "correctness": ("deepeval_answer_relevancy", "phoenix_qa_correctness"),
+        }
+
+        discrepancies: list[str] = []
+
+        for display_name, de_score, ph_score in metric_pairs:
+            if de_score is None or ph_score is None:
+                continue
+            diff = abs(de_score - ph_score)
+            if diff < 0.2:
+                continue
+
+            mapping = metric_mapping.get(display_name)
+            if not mapping:
+                continue
+
+            de_name, ph_name = mapping
+            de_eval = de_by_name.get(de_name)
+            ph_eval = ph_by_name.get(ph_name)
+
+            if de_eval and ph_eval:
+                # Determine which framework scored higher
+                if de_score > ph_score:
+                    higher, lower = "DeepEval", "Phoenix"
+                    higher_reason = self._normalize_reason(de_eval.reason)
+                    lower_reason = self._normalize_reason(ph_eval.reason)
+                else:
+                    higher, lower = "Phoenix", "DeepEval"
+                    higher_reason = self._normalize_reason(ph_eval.reason)
+                    lower_reason = self._normalize_reason(de_eval.reason)
+
+                discrepancies.append(
+                    f"Discrepancy ({display_name}): {higher} says {higher_reason}; {lower} says {lower_reason}"
+                )
+
+        if not discrepancies:
+            return ""
+
+        return "\n".join(discrepancies)
+
+    def _normalize_reason(self, reason: str | None) -> str:
+        """Return the reason with the first letter lowercased, or a default if missing."""
+        if not reason:
+            return "no reason"
+        stripped = reason.strip()
+        if not stripped:
+            return "no reason"
+        return stripped[0].lower() + stripped[1:]
 
     def _calculate_agreement(
         self,
