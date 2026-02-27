@@ -162,4 +162,3 @@ jobs:
 
       - name: Run ruff check
         run: ruff check . --ignore E501
-        continue-on-error: true

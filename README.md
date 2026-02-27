@@ -48,6 +48,30 @@ python --version  # Should show 3.9.x - 3.13.x
 pip install -r requirements.txt
 ```
 
+### Dependency Management
+
+This project uses [pip-tools](https://pip-tools.readthedocs.io/) for reproducible builds.
+
+| File | Purpose |
+|------|---------|
+| `requirements.in` | Direct dependencies with flexible versions |
+| `requirements.txt` | Auto-generated lock file (do not edit manually) |
+
+**Adding or updating dependencies:**
+```bash
+# Add a new dependency: edit requirements.in, then:
+pip-compile requirements.in
+
+# Update all dependencies to latest compatible versions:
+pip-compile --upgrade requirements.in
+
+# Update a single package:
+pip-compile --upgrade-package <package-name> requirements.in
+
+# Sync your environment to match the lock file:
+pip-sync
+```
+
 ## Configuration
 
 1. Copy the sample environment file:
