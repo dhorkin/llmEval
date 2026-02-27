@@ -22,6 +22,43 @@ from models.schemas import EvaluationResult, EvaluationScore  # noqa: E402
 LOG_INDENT = "    "
 
 
+def _handle_metric_error(
+    e: Exception,
+    metric_name: str,
+    display_name: str,
+    threshold: float,
+    zero_div_reason: str,
+    scores: list,
+) -> None:
+    """Handle metric evaluation errors, with special handling for ZeroDivisionError.
+    
+    DeepEval's internal async workers can raise ZeroDivisionError when they fail
+    to extract statements from the output. This helper provides consistent error
+    handling across all metrics.
+    """
+    from models.schemas import EvaluationScore
+    
+    error_msg = str(e)
+    is_zero_div = isinstance(e, ZeroDivisionError) or "ZeroDivisionError" in error_msg
+    
+    if is_zero_div:
+        print(f"{LOG_INDENT}[DeepEval] {display_name} skipped: {zero_div_reason}")
+        reason = zero_div_reason
+    else:
+        print(f"{LOG_INDENT}[DeepEval] {display_name} failed: {e}")
+        reason = f"Evaluation error: {e}"
+    
+    scores.append(
+        EvaluationScore(
+            metric_name=metric_name,
+            score=0.0,
+            passed=False,
+            threshold=threshold,
+            reason=reason,
+        )
+    )
+
+
 class ToolCorrectnessMetric(BaseMetric):
     """Custom metric to verify correct tools were called."""
 
@@ -213,6 +250,7 @@ class DeepEvalRunner:
             relevancy_metric = AnswerRelevancyMetric(
                 threshold=0.7,
                 model=self._model,
+                strict_mode=False,
             )
             await self._rate_limiter.execute_with_retry(
                 relevancy_metric.measure,
@@ -231,15 +269,13 @@ class DeepEvalRunner:
             )
             print(f"{LOG_INDENT}[DeepEval] Answer relevancy complete: {relevancy_metric.score:.2f}")
         except Exception as e:
-            print(f"{LOG_INDENT}[DeepEval] Answer relevancy failed: {e}")
-            scores.append(
-                EvaluationScore(
-                    metric_name="deepeval_answer_relevancy",
-                    score=0.0,
-                    passed=False,
-                    threshold=0.7,
-                    reason=f"Evaluation error: {e}",
-                )
+            _handle_metric_error(
+                e,
+                metric_name="deepeval_answer_relevancy",
+                display_name="Answer relevancy",
+                threshold=0.7,
+                zero_div_reason="Could not extract statements from output for relevancy evaluation",
+                scores=scores,
             )
 
         if expected_output:
@@ -276,15 +312,13 @@ class DeepEvalRunner:
                 )
                 print(f"{LOG_INDENT}[DeepEval] Correctness complete: {correctness_metric.score:.2f}")
             except Exception as e:
-                print(f"{LOG_INDENT}[DeepEval] Correctness failed: {e}")
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_correctness",
-                        score=0.0,
-                        passed=False,
-                        threshold=0.7,
-                        reason=f"Evaluation error: {e}",
-                    )
+                _handle_metric_error(
+                    e,
+                    metric_name="deepeval_correctness",
+                    display_name="Correctness",
+                    threshold=0.7,
+                    zero_div_reason="Could not evaluate correctness - internal evaluation error",
+                    scores=scores,
                 )
 
         if context:
@@ -311,15 +345,13 @@ class DeepEvalRunner:
                 )
                 print(f"{LOG_INDENT}[DeepEval] Faithfulness complete: {faithfulness_metric.score:.2f}")
             except Exception as e:
-                print(f"{LOG_INDENT}[DeepEval] Faithfulness failed: {e}")
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_faithfulness",
-                        score=0.0,
-                        passed=False,
-                        threshold=0.8,
-                        reason=f"Evaluation error: {e}",
-                    )
+                _handle_metric_error(
+                    e,
+                    metric_name="deepeval_faithfulness",
+                    display_name="Faithfulness",
+                    threshold=0.8,
+                    zero_div_reason="Could not extract claims from output for faithfulness evaluation",
+                    scores=scores,
                 )
 
             print(f"{LOG_INDENT}[DeepEval] Running hallucination eval...")
@@ -336,8 +368,6 @@ class DeepEvalRunner:
                 )
                 raw_score = hallucination_metric.score if hallucination_metric.score is not None else 0.0
                 hallucination_score = 1.0 - raw_score
-                # Update reason to reflect inverted score (DeepEval uses higher=worse,
-                # but we invert to higher=better for consistency)
                 original_reason = hallucination_metric.reason or ""
                 if hallucination_metric.score is not None:
                     original_score_str = f"{hallucination_metric.score:.2f}"
@@ -359,15 +389,13 @@ class DeepEvalRunner:
                 )
                 print(f"{LOG_INDENT}[DeepEval] Hallucination complete: {hallucination_score:.2f}")
             except Exception as e:
-                print(f"{LOG_INDENT}[DeepEval] Hallucination failed: {e}")
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_hallucination",
-                        score=0.0,
-                        passed=False,
-                        threshold=0.5,
-                        reason=f"Evaluation error: {e}",
-                    )
+                _handle_metric_error(
+                    e,
+                    metric_name="deepeval_hallucination",
+                    display_name="Hallucination",
+                    threshold=0.5,
+                    zero_div_reason="Could not evaluate hallucination - no valid contexts",
+                    scores=scores,
                 )
 
         if expected_tools:
