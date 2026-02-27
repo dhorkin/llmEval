@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from syrupy.assertion import SnapshotAssertion
 
+from conftest import make_book_info
 from decision_engine.rules import DecisionEngine
-from models.schemas import BookInfo, BookSearchResult
+from models.schemas import BookSearchResult
 
 
 class TestBookRegressionEdgeCases:
@@ -38,21 +39,9 @@ class TestBookRegressionEdgeCases:
         search_result = BookSearchResult(
             query_author="Albert Einstein",
             books=[
-                BookInfo(
-                    title="Relativity: The Special and General Theory",
-                    author="Albert Einstein",
-                    year=1916,
-                ),
-                BookInfo(
-                    title="The Meaning of Relativity",
-                    author="Albert Einstein",
-                    year=1922,
-                ),
-                BookInfo(
-                    title="Ideas and Opinions",
-                    author="Albert Einstein",
-                    year=1954,
-                ),
+                make_book_info("Relativity: The Special and General Theory", "Albert Einstein", 1916),
+                make_book_info("The Meaning of Relativity", "Albert Einstein", 1922),
+                make_book_info("Ideas and Opinions", "Albert Einstein", 1954),
             ],
             total_found=3,
         )
@@ -73,9 +62,9 @@ class TestBookRegressionEdgeCases:
         search_result = BookSearchResult(
             query_author="George Orwell",
             books=[
-                BookInfo(title="Animal Farm", author="George Orwell", year=1945),
-                BookInfo(title="1984", author="George Orwell", year=1949),
-                BookInfo(title="Coming Up for Air", author="George Orwell", year=1939),
+                make_book_info("Animal Farm", "George Orwell", 1945),
+                make_book_info("1984", "George Orwell", 1949),
+                make_book_info("Coming Up for Air", "George Orwell", 1939),
             ],
             total_found=3,
         )
@@ -96,9 +85,9 @@ class TestBookRegressionEdgeCases:
         search_result = BookSearchResult(
             query_author="George Orwell",
             books=[
-                BookInfo(title="Animal Farm", author="George Orwell", year=1945),
-                BookInfo(title="1984", author="George Orwell", year=1949),
-                BookInfo(title="Coming Up for Air", author="George Orwell", year=1939),
+                make_book_info("Animal Farm", "George Orwell", 1945),
+                make_book_info("1984", "George Orwell", 1949),
+                make_book_info("Coming Up for Air", "George Orwell", 1939),
             ],
             total_found=3,
         )
@@ -119,10 +108,10 @@ class TestBookRegressionEdgeCases:
         search_result = BookSearchResult(
             query_author="Test Author",
             books=[
-                BookInfo(title="Z Book", author="Test Author", year=2000),
-                BookInfo(title="A Book", author="Test Author", year=2010),
-                BookInfo(title="M Book", author="Test Author", year=2005),
-                BookInfo(title="No Year Book", author="Test Author", year=None),
+                make_book_info("Z Book", "Test Author", 2000),
+                make_book_info("A Book", "Test Author", 2010),
+                make_book_info("M Book", "Test Author", 2005),
+                make_book_info("No Year Book", "Test Author", None),
             ],
             total_found=4,
         )

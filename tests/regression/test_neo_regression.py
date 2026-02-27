@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from syrupy.assertion import SnapshotAssertion
 
+from conftest import make_neo_info
 from decision_engine.rules import DecisionEngine
-from models.schemas import NEOFeedResult, NEOInfo
+from models.schemas import NEOFeedResult
 
 
 class TestNEORegressionEdgeCases:
@@ -50,27 +51,9 @@ class TestNEORegressionEdgeCases:
             end_date="2024-03-02",
             element_count=3,
             near_earth_objects=[
-                NEOInfo(
-                    name="2024 AB",
-                    neo_id="12345",
-                    is_potentially_hazardous=True,
-                    close_approach_date="2024-03-01",
-                    miss_distance_km=2500000.0,
-                ),
-                NEOInfo(
-                    name="2024 CD",
-                    neo_id="67890",
-                    is_potentially_hazardous=False,
-                    close_approach_date="2024-03-01",
-                    miss_distance_km=5000000.0,
-                ),
-                NEOInfo(
-                    name="2024 EF",
-                    neo_id="11111",
-                    is_potentially_hazardous=True,
-                    close_approach_date="2024-03-02",
-                    miss_distance_km=1000000.0,
-                ),
+                make_neo_info("2024 AB", "12345", hazardous=True, date="2024-03-01", distance_km=2500000.0),
+                make_neo_info("2024 CD", "67890", hazardous=False, date="2024-03-01", distance_km=5000000.0),
+                make_neo_info("2024 EF", "11111", hazardous=True, date="2024-03-02", distance_km=1000000.0),
             ],
         )
 
@@ -93,20 +76,8 @@ class TestNEORegressionEdgeCases:
             end_date="2024-03-02",
             element_count=2,
             near_earth_objects=[
-                NEOInfo(
-                    name="2024 GH",
-                    neo_id="22222",
-                    is_potentially_hazardous=False,
-                    close_approach_date="2024-03-01",
-                    miss_distance_km=8000000.0,
-                ),
-                NEOInfo(
-                    name="2024 IJ",
-                    neo_id="33333",
-                    is_potentially_hazardous=False,
-                    close_approach_date="2024-03-02",
-                    miss_distance_km=10000000.0,
-                ),
+                make_neo_info("2024 GH", "22222", date="2024-03-01", distance_km=8000000.0),
+                make_neo_info("2024 IJ", "33333", date="2024-03-02", distance_km=10000000.0),
             ],
         )
 
@@ -129,27 +100,9 @@ class TestNEORegressionEdgeCases:
             end_date="2024-03-02",
             element_count=3,
             near_earth_objects=[
-                NEOInfo(
-                    name="Far Away",
-                    neo_id="44444",
-                    is_potentially_hazardous=False,
-                    close_approach_date="2024-03-01",
-                    miss_distance_km=10000000.0,
-                ),
-                NEOInfo(
-                    name="Close One",
-                    neo_id="55555",
-                    is_potentially_hazardous=False,
-                    close_approach_date="2024-03-01",
-                    miss_distance_km=500000.0,
-                ),
-                NEOInfo(
-                    name="Medium Distance",
-                    neo_id="66666",
-                    is_potentially_hazardous=False,
-                    close_approach_date="2024-03-02",
-                    miss_distance_km=3000000.0,
-                ),
+                make_neo_info("Far Away", "44444", date="2024-03-01", distance_km=10000000.0),
+                make_neo_info("Close One", "55555", date="2024-03-01", distance_km=500000.0),
+                make_neo_info("Medium Distance", "66666", date="2024-03-02", distance_km=3000000.0),
             ],
         )
 

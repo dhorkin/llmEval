@@ -668,62 +668,49 @@ class PhoenixEvaluator:
 
         return scores
 
-    def _evaluate_categorical_hallucination(self, df: pd.DataFrame) -> tuple[float, str]:
-        """Evaluate hallucination using categorical (binary) mode."""
-        assert self._hallucination_eval is not None, "Evaluators not initialized"
+    def _run_categorical_eval(
+        self,
+        df: pd.DataFrame,
+        evaluator: Any,
+        pass_label: str,
+    ) -> tuple[float, str]:
+        """Run a categorical (binary) evaluation with the given evaluator.
+
+        Args:
+            df: DataFrame with input, output, reference columns
+            evaluator: Phoenix evaluator instance (e.g., HallucinationEvaluator)
+            pass_label: Label that indicates a passing result (e.g., "factual", "correct")
+
+        Returns:
+            Tuple of (score, explanation)
+        """
+        assert evaluator is not None, "Evaluator not initialized"
         with _indented_output():
             results = run_evals(
                 dataframe=df,
-                evaluators=[self._hallucination_eval],
+                evaluators=[evaluator],
                 provide_explanation=True,
                 concurrency=1,
-                progress_bar_format=_get_progress_bar_format(),
             )
         if results[0].empty:
             return 0.0, "Evaluation returned empty results"
         row = results[0].iloc[0]
         label = _safe_get_value(row, "label", "")
         explanation = _safe_get_value(row, "explanation", "No explanation provided")
-        score = 1.0 if label == "factual" else 0.0
+        score = 1.0 if label == pass_label else 0.0
         return score, explanation or f"Label: {label}"
+
+    def _evaluate_categorical_hallucination(self, df: pd.DataFrame) -> tuple[float, str]:
+        """Evaluate hallucination using categorical (binary) mode."""
+        return self._run_categorical_eval(df, self._hallucination_eval, "factual")
 
     def _evaluate_categorical_qa(self, df: pd.DataFrame) -> tuple[float, str]:
         """Evaluate QA correctness using categorical (binary) mode."""
-        assert self._qa_eval is not None, "Evaluators not initialized"
-        with _indented_output():
-            results = run_evals(
-                dataframe=df,
-                evaluators=[self._qa_eval],
-                provide_explanation=True,
-                concurrency=1,
-                progress_bar_format=_get_progress_bar_format(),
-            )
-        if results[0].empty:
-            return 0.0, "Evaluation returned empty results"
-        row = results[0].iloc[0]
-        label = _safe_get_value(row, "label", "")
-        explanation = _safe_get_value(row, "explanation", "No explanation provided")
-        score = 1.0 if label == "correct" else 0.0
-        return score, explanation or f"Label: {label}"
+        return self._run_categorical_eval(df, self._qa_eval, "correct")
 
     def _evaluate_categorical_relevance(self, df: pd.DataFrame) -> tuple[float, str]:
         """Evaluate relevance using categorical (binary) mode."""
-        assert self._relevance_eval is not None, "Evaluators not initialized"
-        with _indented_output():
-            results = run_evals(
-                dataframe=df,
-                evaluators=[self._relevance_eval],
-                provide_explanation=True,
-                concurrency=1,
-                progress_bar_format=_get_progress_bar_format(),
-            )
-        if results[0].empty:
-            return 0.0, "Evaluation returned empty results"
-        row = results[0].iloc[0]
-        label = _safe_get_value(row, "label", "")
-        explanation = _safe_get_value(row, "explanation", "No explanation provided")
-        score = 1.0 if label == "relevant" else 0.0
-        return score, explanation or f"Label: {label}"
+        return self._run_categorical_eval(df, self._relevance_eval, "relevant")
 
     def _evaluate_categorical_faithfulness(self, df: pd.DataFrame) -> tuple[float, str]:
         """Evaluate faithfulness using categorical (binary) mode via llm_classify."""

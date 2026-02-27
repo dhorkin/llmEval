@@ -14,6 +14,83 @@ sys.path.insert(0, str(project_root))
 os.environ.setdefault("LLM_PROVIDER", "openai")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 
+from models.schemas import BookInfo, NEOInfo, PoemInfo, MealInfo, NutrientInfo  # noqa: E402
+
+
+def make_book_info(
+    title: str,
+    author: str,
+    year: int | None = None,
+    subjects: list[str] | None = None,
+) -> BookInfo:
+    """Factory for creating BookInfo test fixtures."""
+    return BookInfo(
+        title=title,
+        author=author,
+        year=year,
+        subjects=subjects or [],
+    )
+
+
+def make_neo_info(
+    name: str,
+    neo_id: str,
+    hazardous: bool = False,
+    date: str = "2024-03-01",
+    distance_km: float = 1000000.0,
+) -> NEOInfo:
+    """Factory for creating NEOInfo test fixtures."""
+    return NEOInfo(
+        name=name,
+        neo_id=neo_id,
+        is_potentially_hazardous=hazardous,
+        close_approach_date=date,
+        miss_distance_km=distance_km,
+    )
+
+
+def make_poem_info(
+    title: str,
+    author: str,
+    lines: list[str] | None = None,
+    linecount: int | None = None,
+) -> PoemInfo:
+    """Factory for creating PoemInfo test fixtures."""
+    lines = lines or ["Sample line"] * 14
+    return PoemInfo(
+        title=title,
+        author=author,
+        lines=lines,
+        linecount=linecount if linecount is not None else len(lines),
+    )
+
+
+def make_meal_info(
+    name: str,
+    description: str,
+    ingredients: list[str],
+    calories: float = 400.0,
+    protein: float = 20.0,
+    carbs: float = 30.0,
+    fat: float = 15.0,
+    diet_compatible: bool = True,
+    restriction_safe: bool = True,
+) -> MealInfo:
+    """Factory for creating MealInfo test fixtures."""
+    return MealInfo(
+        name=name,
+        description=description,
+        ingredients=ingredients,
+        nutrients=NutrientInfo(
+            calories=calories,
+            protein_g=protein,
+            carbs_g=carbs,
+            fat_g=fat,
+        ),
+        diet_compatible=diet_compatible,
+        restriction_safe=restriction_safe,
+    )
+
 
 @pytest.fixture
 def sample_book_query() -> str:

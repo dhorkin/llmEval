@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from syrupy.assertion import SnapshotAssertion
 
+from conftest import make_poem_info
 from decision_engine.rules import DecisionEngine
-from models.schemas import PoemInfo, PoetryResult
+from models.schemas import PoetryResult
 
 
 class TestPoetryRegressionEdgeCases:
@@ -18,24 +19,9 @@ class TestPoetryRegressionEdgeCases:
         poetry_result = PoetryResult(
             query_author="William Shakespeare",
             poems=[
-                PoemInfo(
-                    title="Sonnet 18",
-                    author="William Shakespeare",
-                    lines=["Shall I compare thee to a summer's day?"] * 14,
-                    linecount=14,
-                ),
-                PoemInfo(
-                    title="Short Poem",
-                    author="William Shakespeare",
-                    lines=["A short poem line"] * 8,
-                    linecount=8,
-                ),
-                PoemInfo(
-                    title="Sonnet 29",
-                    author="William Shakespeare",
-                    lines=["When, in disgrace with fortune"] * 14,
-                    linecount=14,
-                ),
+                make_poem_info("Sonnet 18", "William Shakespeare", ["Shall I compare thee to a summer's day?"] * 14),
+                make_poem_info("Short Poem", "William Shakespeare", ["A short poem line"] * 8, linecount=8),
+                make_poem_info("Sonnet 29", "William Shakespeare", ["When, in disgrace with fortune"] * 14),
             ],
             total_found=3,
         )
@@ -53,23 +39,17 @@ class TestPoetryRegressionEdgeCases:
         self, snapshot: SnapshotAssertion
     ) -> None:
         """Regression: Quatrain request extracts first 4 lines."""
+        quatrain_lines = [
+            "Shall I compare thee to a summer's day?",
+            "Thou art more lovely and more temperate:",
+            "Rough winds do shake the darling buds of May,",
+            "And summer's lease hath all too short a date:",
+            "Sometime too hot the eye of heaven shines,",
+            "And often is his gold complexion dimm'd;",
+        ]
         poetry_result = PoetryResult(
             query_author="William Shakespeare",
-            poems=[
-                PoemInfo(
-                    title="Sonnet 18",
-                    author="William Shakespeare",
-                    lines=[
-                        "Shall I compare thee to a summer's day?",
-                        "Thou art more lovely and more temperate:",
-                        "Rough winds do shake the darling buds of May,",
-                        "And summer's lease hath all too short a date:",
-                        "Sometime too hot the eye of heaven shines,",
-                        "And often is his gold complexion dimm'd;",
-                    ],
-                    linecount=14,
-                ),
-            ],
+            poems=[make_poem_info("Sonnet 18", "William Shakespeare", quatrain_lines, linecount=14)],
             total_found=1,
         )
 
@@ -109,14 +89,7 @@ class TestPoetryRegressionEdgeCases:
         """Regression: Literary analysis flag is set for metaphor/imagery queries."""
         poetry_result = PoetryResult(
             query_author="Robert Frost",
-            poems=[
-                PoemInfo(
-                    title="The Road Not Taken",
-                    author="Robert Frost",
-                    lines=["Two roads diverged in a yellow wood,"] * 20,
-                    linecount=20,
-                ),
-            ],
+            poems=[make_poem_info("The Road Not Taken", "Robert Frost", ["Two roads diverged in a yellow wood,"] * 20, linecount=20)],
             total_found=1,
         )
 

@@ -15,6 +15,16 @@ from evaluation.deepeval_runner import DeepEvalRunner
 from evaluation.phoenix_eval import PhoenixEvaluator
 from models.schemas import EvaluationResult, EvaluationScore
 
+# Mapping between display names and framework-specific metric names
+METRIC_MAPPING = {
+    "relevance": ("deepeval_answer_relevancy", "phoenix_relevance"),
+    "hallucination": ("deepeval_hallucination", "phoenix_hallucination"),
+    "correctness": ("deepeval_correctness", "phoenix_qa_correctness"),
+    "faithfulness": ("deepeval_faithfulness", "phoenix_faithfulness"),
+    "tool_usage": ("deepeval_tool_correctness", "phoenix_tool_selection"),
+    "schema": ("deepeval_schema_validation", None),
+}
+
 
 class EvaluationComparison:
     """Run both Phoenix and DeepEval evaluations and compare results."""
@@ -24,6 +34,36 @@ class EvaluationComparison:
         self.phoenix_evaluator = PhoenixEvaluator()
         self.deepeval_runner = DeepEvalRunner()
         self.console = Console()
+
+    async def _run_evaluator(
+        self,
+        evaluator: Any,
+        evaluator_name: str,
+        test_case_id: str,
+        input_query: str,
+        actual_output: str,
+        context: list[str] | None,
+        expected_output: str | None,
+        expected_tools: list[str] | None,
+        actual_tools_called: list[str] | None,
+        verbose: bool = False,
+    ) -> list[EvaluationScore]:
+        """Run a single evaluator and optionally log progress."""
+        scores: list[EvaluationScore] = await evaluator.evaluate(
+            test_case_id=test_case_id,
+            input_query=input_query,
+            actual_output=actual_output,
+            context=context,
+            expected_output=expected_output,
+            expected_tools=expected_tools,
+            actual_tools_called=actual_tools_called,
+        )
+        if verbose:
+            self.console.print(
+                f"    [green]✓[/green] {evaluator_name} complete "
+                f"({len(scores)} metrics)"
+            )
+        return scores
 
     async def evaluate_with_both(
         self,
@@ -41,27 +81,15 @@ class EvaluationComparison:
 
         Returns combined EvaluationResult with scores from both frameworks.
         """
-        phoenix_scores = await self.phoenix_evaluator.evaluate(
-            test_case_id=test_case_id,
-            input_query=input_query,
-            actual_output=actual_output,
-            context=context,
-            expected_output=expected_output,
-            expected_tools=expected_tools,
-            actual_tools_called=actual_tools_called,
+        phoenix_scores = await self._run_evaluator(
+            self.phoenix_evaluator, "Phoenix", test_case_id, input_query,
+            actual_output, context, expected_output, expected_tools, actual_tools_called,
+        )
+        deepeval_scores = await self._run_evaluator(
+            self.deepeval_runner, "DeepEval", test_case_id, input_query,
+            actual_output, context, expected_output, expected_tools, actual_tools_called,
         )
 
-        deepeval_scores = await self.deepeval_runner.evaluate(
-            test_case_id=test_case_id,
-            input_query=input_query,
-            actual_output=actual_output,
-            context=context,
-            expected_output=expected_output,
-            expected_tools=expected_tools,
-            actual_tools_called=actual_tools_called,
-        )
-
-        # Determine pass/fail using global thresholds
         overall_passed = self._check_overall_passed(deepeval_scores, phoenix_scores)
 
         return EvaluationResult(
@@ -93,39 +121,19 @@ class EvaluationComparison:
                     f"  [{i}/{total}] Evaluating [cyan]{test_case_id}[/cyan]..."
                 )
 
-            phoenix_scores = await self.phoenix_evaluator.evaluate(
-                test_case_id=test_case_id,
-                input_query=tc["input_query"],
-                actual_output=tc["actual_output"],
-                context=tc.get("context"),
-                expected_output=tc.get("expected_output"),
-                expected_tools=tc.get("expected_tools"),
-                actual_tools_called=tc.get("actual_tools_called"),
+            phoenix_scores = await self._run_evaluator(
+                self.phoenix_evaluator, "Phoenix", test_case_id,
+                tc["input_query"], tc["actual_output"], tc.get("context"),
+                tc.get("expected_output"), tc.get("expected_tools"),
+                tc.get("actual_tools_called"), verbose=verbose,
             )
-            
-            if verbose:
-                self.console.print(
-                    f"    [green]✓[/green] Phoenix complete "
-                    f"({len(phoenix_scores)} metrics)"
-                )
-
-            deepeval_scores = await self.deepeval_runner.evaluate(
-                test_case_id=test_case_id,
-                input_query=tc["input_query"],
-                actual_output=tc["actual_output"],
-                context=tc.get("context"),
-                expected_output=tc.get("expected_output"),
-                expected_tools=tc.get("expected_tools"),
-                actual_tools_called=tc.get("actual_tools_called"),
+            deepeval_scores = await self._run_evaluator(
+                self.deepeval_runner, "DeepEval", test_case_id,
+                tc["input_query"], tc["actual_output"], tc.get("context"),
+                tc.get("expected_output"), tc.get("expected_tools"),
+                tc.get("actual_tools_called"), verbose=verbose,
             )
-            
-            if verbose:
-                self.console.print(
-                    f"    [green]✓[/green] DeepEval complete "
-                    f"({len(deepeval_scores)} metrics)"
-                )
 
-            # Determine pass/fail using global thresholds
             overall_passed = self._check_overall_passed(deepeval_scores, phoenix_scores)
 
             result = EvaluationResult(
@@ -283,21 +291,11 @@ class EvaluationComparison:
         Always returns all 6 metrics, showing None (displayed as "-") when a 
         metric wasn't run by either framework.
         """
-        pairs: list[tuple[str, float | None, float | None]] = []
-
-        metric_mapping = {
-            "relevance": ("deepeval_answer_relevancy", "phoenix_relevance"),
-            "hallucination": ("deepeval_hallucination", "phoenix_hallucination"),
-            "correctness": ("deepeval_correctness", "phoenix_qa_correctness"),
-            "faithfulness": ("deepeval_faithfulness", "phoenix_faithfulness"),
-            "tool_usage": ("deepeval_tool_correctness", "phoenix_tool_selection"),
-            "schema": ("deepeval_schema_validation", None),
-        }
-
         de_scores = {s.metric_name: s.score for s in deepeval_scores}
         ph_scores = {s.metric_name: s.score for s in phoenix_scores}
 
-        for display_name, (de_name, ph_name) in metric_mapping.items():
+        pairs: list[tuple[str, float | None, float | None]] = []
+        for display_name, (de_name, ph_name) in METRIC_MAPPING.items():
             de_score = de_scores.get(de_name) if de_name else None
             ph_score = ph_scores.get(ph_name) if ph_name else None
             pairs.append((display_name, de_score, ph_score))
@@ -320,24 +318,16 @@ class EvaluationComparison:
         ph_by_name = {s.metric_name: s for s in phoenix_scores}
         eval_method = self.settings.phoenix_evaluation_method
 
-        metric_mapping = {
-            "relevance": ("deepeval_answer_relevancy", "phoenix_relevance"),
-            "hallucination": ("deepeval_hallucination", "phoenix_hallucination"),
-            "correctness": ("deepeval_correctness", "phoenix_qa_correctness"),
-            "faithfulness": ("deepeval_faithfulness", "phoenix_faithfulness"),
-            "tool_usage": ("deepeval_tool_correctness", "phoenix_tool_selection"),
-        }
-
         summaries: list[str] = []
 
         for display_name, de_score, ph_score in metric_pairs:
-            mapping = metric_mapping.get(display_name)
-            if not mapping:
+            mapping = METRIC_MAPPING.get(display_name)
+            if not mapping or mapping[1] is None:  # Skip schema (no Phoenix equivalent)
                 continue
 
             de_name, ph_name = mapping
             de_eval = de_by_name.get(de_name)
-            ph_eval = ph_by_name.get(ph_name)
+            ph_eval = ph_by_name.get(ph_name) if ph_name else None
 
             # Check for failures (below threshold)
             de_failed = de_eval and de_score is not None and de_score < de_eval.threshold
@@ -412,29 +402,21 @@ class EvaluationComparison:
         Returns list of tuples: (framework, metric_name, score, threshold, reason)
         """
         failed: list[tuple[str, str, float, float, str]] = []
-        threshold = metric_threshold if metric_threshold is not None else None
         
-        for score in deepeval_scores:
-            effective_threshold = threshold if threshold is not None else score.threshold
-            if score.score < effective_threshold:
-                failed.append((
-                    "DeepEval",
-                    score.metric_name.replace("deepeval_", ""),
-                    score.score,
-                    effective_threshold,
-                    score.reason or "No reason provided",
-                ))
-        
-        for score in phoenix_scores:
-            effective_threshold = threshold if threshold is not None else score.threshold
-            if score.score < effective_threshold:
-                failed.append((
-                    "Phoenix",
-                    score.metric_name.replace("phoenix_", ""),
-                    score.score,
-                    effective_threshold,
-                    score.reason or "No reason provided",
-                ))
+        for framework, scores, prefix in [
+            ("DeepEval", deepeval_scores, "deepeval_"),
+            ("Phoenix", phoenix_scores, "phoenix_"),
+        ]:
+            for score in scores:
+                effective_threshold = metric_threshold if metric_threshold is not None else score.threshold
+                if score.score < effective_threshold:
+                    failed.append((
+                        framework,
+                        score.metric_name.replace(prefix, ""),
+                        score.score,
+                        effective_threshold,
+                        score.reason or "No reason provided",
+                    ))
         
         return failed
 

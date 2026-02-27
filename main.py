@@ -30,6 +30,104 @@ _agent_outputs: list[dict[str, Any]] = []
 _comparison_instance: EvaluationComparison | None = None
 
 
+def _build_output_entry(
+    tc: dict[str, Any],
+    response: Any,
+) -> dict[str, Any]:
+    """Build a standardized output entry from agent response.
+    
+    Extracts tool calls, API results, and context for evaluation.
+    """
+    actual_tools = [tool_call.tool_name for tool_call in response.tool_calls]
+    api_results = [
+        {
+            "tool_name": call.tool_name,
+            "parameters": call.parameters,
+            "result": call.result,
+            "success": call.success,
+            "error_message": call.error_message,
+            "latency_ms": call.latency_ms,
+        }
+        for call in response.tool_calls
+    ]
+    context_entries = []
+    for call in response.tool_calls:
+        result_data = call.result if call.result is not None else {}
+        result_str = json.dumps(result_data, indent=2, default=str)
+        context_entries.append(
+            f"[{call.tool_name}] Called with: {json.dumps(call.parameters, default=str)}\nResult:\n{result_str}"
+        )
+    return {
+        "test_case_id": tc["test_case_id"],
+        "input_query": tc["input_query"],
+        "actual_output": response.report.model_dump_json(),
+        "expected_output": tc.get("expected_output"),
+        "expected_tools": tc.get("expected_tools"),
+        "actual_tools_called": actual_tools,
+        "context": context_entries if context_entries else None,
+        "api_results": api_results,
+    }
+
+
+def _build_error_entry(tc: dict[str, Any], error: Exception) -> dict[str, Any]:
+    """Build an output entry for a failed agent run."""
+    return {
+        "test_case_id": tc["test_case_id"],
+        "input_query": tc["input_query"],
+        "actual_output": f"Error: {error}",
+        "expected_output": tc.get("expected_output"),
+        "actual_tools_called": [],
+        "context": None,
+        "api_results": [],
+    }
+
+
+async def _run_agent_on_test_cases(
+    agent: AgentPlanner,
+    test_cases: list[dict[str, Any]],
+    progress_format: str = "[{i}/{total}] {test_case_id}...",
+) -> list[dict[str, Any]]:
+    """Run agent on test cases and collect outputs.
+    
+    Args:
+        agent: The AgentPlanner instance
+        test_cases: List of test case dicts
+        progress_format: Format string for progress display
+        
+    Returns:
+        List of output entry dicts for evaluation
+    """
+    global _agent_outputs
+    agent_outputs: list[dict[str, Any]] = []
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        for i, tc in enumerate(test_cases):
+            task = progress.add_task(
+                progress_format.format(
+                    i=i + 1,
+                    total=len(test_cases),
+                    test_case_id=tc["test_case_id"],
+                ),
+                total=None,
+            )
+            try:
+                response = await agent.run(str(tc["input_query"]))
+                output_entry = _build_output_entry(tc, response)
+            except Exception as e:
+                output_entry = _build_error_entry(tc, e)
+                console.print(f"  [red]Error on {tc['test_case_id']}: {e}[/red]")
+            
+            agent_outputs.append(output_entry)
+            _agent_outputs.append(output_entry)
+            progress.update(task, completed=True)
+    
+    return agent_outputs
+
+
 def _handle_sigint(signum: int, frame: Any) -> None:
     """Handle Ctrl+C by saving partial results and exiting immediately."""
     console.print("\n\n[yellow]Interrupted by user.[/yellow]")
@@ -179,70 +277,16 @@ def evaluate(framework: str) -> None:
         global _partial_results, _comparison_instance, _agent_outputs
         
         agent = AgentPlanner()
-        agent_outputs: list[dict[str, Any]] = []
         _partial_results = []
         _agent_outputs = []
 
         try:
             console.print("\n[bold]Generating agent outputs...[/bold]")
-
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                for tc in TEST_CASES:
-                    task = progress.add_task(f"Running {tc['test_case_id']}...", total=None)
-                    try:
-                        response = await agent.run(str(tc["input_query"]))
-                        actual_tools = [t.tool_name for t in response.tool_calls]
-                        import json
-                        api_results = [
-                            {
-                                "tool_name": call.tool_name,
-                                "parameters": call.parameters,
-                                "result": call.result,
-                                "success": call.success,
-                                "error_message": call.error_message,
-                                "latency_ms": call.latency_ms,
-                            }
-                            for call in response.tool_calls
-                        ]
-                        # Build context from API results for faithfulness/hallucination evaluation
-                        # Context = the actual data the agent used to generate its response
-                        # Always include context if tools were called, even if results are None/empty
-                        context_entries = []
-                        for call in response.tool_calls:
-                            result_data = call.result if call.result is not None else {}
-                            result_str = json.dumps(result_data, indent=2, default=str)
-                            context_entries.append(
-                                f"[{call.tool_name}] Called with: {json.dumps(call.parameters, default=str)}\nResult:\n{result_str}"
-                            )
-                        output_entry = {
-                            "test_case_id": tc["test_case_id"],
-                            "input_query": tc["input_query"],
-                            "actual_output": response.report.model_dump_json(),
-                            "expected_output": tc.get("expected_output"),
-                            "expected_tools": tc.get("expected_tools"),
-                            "actual_tools_called": actual_tools,
-                            "context": context_entries if context_entries else None,
-                            "api_results": api_results,
-                        }
-                        agent_outputs.append(output_entry)
-                        _agent_outputs.append(output_entry)
-                    except Exception as e:
-                        error_entry = {
-                            "test_case_id": tc["test_case_id"],
-                            "input_query": tc["input_query"],
-                            "actual_output": f"Error: {e}",
-                            "expected_output": tc.get("expected_output"),
-                            "actual_tools_called": [],
-                            "api_results": [],
-                        }
-                        agent_outputs.append(error_entry)
-                        _agent_outputs.append(error_entry)
-                    progress.update(task, completed=True)
-
+            agent_outputs = await _run_agent_on_test_cases(
+                agent,
+                TEST_CASES,
+                progress_format="Running {test_case_id}...",
+            )
         finally:
             await agent.close()
 
@@ -269,11 +313,11 @@ def evaluate(framework: str) -> None:
                     test_case_id=str(tc["test_case_id"]),
                     input_query=str(tc["input_query"]),
                     actual_output=str(tc["actual_output"]),
-                    context=tc.get("context") if isinstance(tc.get("context"), list) else None,  # type: ignore[arg-type]
+                    context=tc.get("context") if isinstance(tc.get("context"), list) else None,
                     expected_output=str(tc["expected_output"]) if tc.get("expected_output") else None,
-                    expected_tools=tc.get("expected_tools") if isinstance(tc.get("expected_tools"), list) else None,  # type: ignore[arg-type]
-                    actual_tools_called=tc.get("actual_tools_called") if isinstance(tc.get("actual_tools_called"), list) else None,  # type: ignore[arg-type]
-                    api_results=tc.get("api_results") if isinstance(tc.get("api_results"), list) else None,  # type: ignore[arg-type]
+                    expected_tools=tc.get("expected_tools") if isinstance(tc.get("expected_tools"), list) else None,
+                    actual_tools_called=tc.get("actual_tools_called") if isinstance(tc.get("actual_tools_called"), list) else None,
+                    api_results=tc.get("api_results") if isinstance(tc.get("api_results"), list) else None,
                 )
                 _partial_results.append(result)
             
@@ -304,68 +348,9 @@ def pipeline() -> None:
         console.print(f"  Using {len(TEST_CASES)} predefined test cases")
 
         console.print("\n[bold]Step 2: Running agent on test cases[/bold]")
-        agent_outputs: list[dict[str, Any]] = []
 
         try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                for i, tc in enumerate(TEST_CASES):
-                    task = progress.add_task(
-                        f"[{i+1}/{len(TEST_CASES)}] {tc['test_case_id']}...",
-                        total=None,
-                    )
-                    try:
-                        import json
-                        response = await agent.run(str(tc["input_query"]))
-                        actual_tools = [tool_call.tool_name for tool_call in response.tool_calls]
-                        api_results = [
-                            {
-                                "tool_name": call.tool_name,
-                                "parameters": call.parameters,
-                                "result": call.result,
-                                "success": call.success,
-                                "error_message": call.error_message,
-                                "latency_ms": call.latency_ms,
-                            }
-                            for call in response.tool_calls
-                        ]
-                        # Build context from API results for faithfulness/hallucination evaluation
-                        context_entries = []
-                        for call in response.tool_calls:
-                            result_data = call.result if call.result is not None else {}
-                            result_str = json.dumps(result_data, indent=2, default=str)
-                            context_entries.append(
-                                f"[{call.tool_name}] Called with: {json.dumps(call.parameters, default=str)}\nResult:\n{result_str}"
-                            )
-                        output_entry = {
-                            "test_case_id": tc["test_case_id"],
-                            "input_query": tc["input_query"],
-                            "actual_output": response.report.model_dump_json(),
-                            "expected_output": tc.get("expected_output"),
-                            "expected_tools": tc.get("expected_tools"),
-                            "actual_tools_called": actual_tools,
-                            "context": context_entries if context_entries else None,
-                            "api_results": api_results,
-                        }
-                        agent_outputs.append(output_entry)
-                        _agent_outputs.append(output_entry)
-                    except Exception as e:
-                        console.print(f"  [red]Error on {tc['test_case_id']}: {e}[/red]")
-                        error_entry = {
-                            "test_case_id": tc["test_case_id"],
-                            "input_query": tc["input_query"],
-                            "actual_output": f"Error: {e}",
-                            "actual_tools_called": [],
-                            "context": None,
-                            "api_results": [],
-                        }
-                        agent_outputs.append(error_entry)
-                        _agent_outputs.append(error_entry)
-                    progress.update(task, completed=True)
-
+            agent_outputs = await _run_agent_on_test_cases(agent, TEST_CASES)
         finally:
             await agent.close()
 
@@ -377,11 +362,11 @@ def pipeline() -> None:
                 test_case_id=str(tc["test_case_id"]),
                 input_query=str(tc["input_query"]),
                 actual_output=str(tc["actual_output"]),
-                context=tc.get("context") if isinstance(tc.get("context"), list) else None,  # type: ignore[arg-type]
+                context=tc.get("context") if isinstance(tc.get("context"), list) else None,
                 expected_output=str(tc["expected_output"]) if tc.get("expected_output") else None,
-                expected_tools=tc.get("expected_tools") if isinstance(tc.get("expected_tools"), list) else None,  # type: ignore[arg-type]
-                actual_tools_called=tc.get("actual_tools_called") if isinstance(tc.get("actual_tools_called"), list) else None,  # type: ignore[arg-type]
-                api_results=tc.get("api_results") if isinstance(tc.get("api_results"), list) else None,  # type: ignore[arg-type]
+                expected_tools=tc.get("expected_tools") if isinstance(tc.get("expected_tools"), list) else None,
+                actual_tools_called=tc.get("actual_tools_called") if isinstance(tc.get("actual_tools_called"), list) else None,
+                api_results=tc.get("api_results") if isinstance(tc.get("api_results"), list) else None,
             )
             _partial_results.append(result)
             console.print(f"    [green]✓[/green] Complete ({len(result.phoenix_scores)} Phoenix, {len(result.deepeval_scores)} DeepEval metrics)")

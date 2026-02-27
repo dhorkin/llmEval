@@ -48,6 +48,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
 ignore_missing_imports = true
+exclude = ["venv", ".venv"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

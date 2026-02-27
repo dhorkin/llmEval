@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Callable
 
 from dotenv import load_dotenv
 
@@ -28,7 +28,7 @@ def _handle_metric_error(
     display_name: str,
     threshold: float,
     zero_div_reason: str,
-    scores: list,
+    scores: list[Any],
 ) -> None:
     """Handle metric evaluation errors, with special handling for ZeroDivisionError.
     
@@ -208,6 +208,51 @@ class DeepEvalRunner:
             return None
         return "gpt-4o-mini"
 
+    async def _run_metric(
+        self,
+        metric: Any,
+        test_case: LLMTestCase,
+        metric_name: str,
+        display_name: str,
+        threshold: float,
+        zero_div_reason: str,
+        scores: list[EvaluationScore],
+        rate_limit_name: str | None = None,
+        score_transform: Callable[[float], float] | None = None,
+        reason_transform: Callable[[str, float, float], str] | None = None,
+    ) -> None:
+        """Run a single DeepEval metric with rate limiting and error handling."""
+        print(f"{LOG_INDENT}[DeepEval] Running {display_name.lower()} eval...")
+        try:
+            if rate_limit_name:
+                await self._rate_limiter.execute_with_retry(
+                    metric.measure, test_case,
+                    service_name="DeepEval", metric_name=rate_limit_name,
+                )
+            else:
+                metric.measure(test_case)
+            
+            raw_score = metric.score if metric.score is not None else 0.0
+            final_score = score_transform(raw_score) if score_transform else raw_score
+            
+            reason = metric.reason or ""
+            if reason_transform and metric.score is not None:
+                reason = reason_transform(reason, raw_score, final_score)
+            
+            scores.append(EvaluationScore(
+                metric_name=metric_name,
+                score=final_score,
+                passed=metric.is_successful(),
+                threshold=threshold,
+                reason=reason,
+            ))
+            print(f"{LOG_INDENT}[DeepEval] {display_name} complete: {final_score:.2f}")
+        except Exception as e:
+            _handle_metric_error(
+                e, metric_name=metric_name, display_name=display_name,
+                threshold=threshold, zero_div_reason=zero_div_reason, scores=scores,
+            )
+
     async def evaluate(
         self,
         test_case_id: str,
@@ -245,215 +290,64 @@ class DeepEvalRunner:
             retrieval_context=context,  # For FaithfulnessMetric
         )
 
-        print(f"{LOG_INDENT}[DeepEval] Running answer relevancy eval...")
-        try:
-            relevancy_metric = AnswerRelevancyMetric(
-                threshold=0.7,
-                model=self._model,
-                strict_mode=False,
-            )
-            await self._rate_limiter.execute_with_retry(
-                relevancy_metric.measure,
-                test_case,
-                service_name="DeepEval",
-                metric_name="answer_relevancy",
-            )
-            scores.append(
-                EvaluationScore(
-                    metric_name="deepeval_answer_relevancy",
-                    score=relevancy_metric.score if relevancy_metric.score is not None else 0.0,
-                    passed=relevancy_metric.is_successful(),
-                    threshold=0.7,
-                    reason=relevancy_metric.reason,
-                )
-            )
-            print(f"{LOG_INDENT}[DeepEval] Answer relevancy complete: {relevancy_metric.score:.2f}")
-        except Exception as e:
-            _handle_metric_error(
-                e,
-                metric_name="deepeval_answer_relevancy",
-                display_name="Answer relevancy",
-                threshold=0.7,
-                zero_div_reason="Could not extract statements from output for relevancy evaluation",
-                scores=scores,
-            )
+        await self._run_metric(
+            AnswerRelevancyMetric(threshold=0.7, model=self._model, strict_mode=False),
+            test_case, "deepeval_answer_relevancy", "Answer relevancy", 0.7,
+            "Could not extract statements from output for relevancy evaluation",
+            scores, rate_limit_name="answer_relevancy",
+        )
 
         if expected_output:
-            print(f"{LOG_INDENT}[DeepEval] Running correctness eval (GEval)...")
-            try:
-                correctness_metric = GEval(
-                    name="Correctness",
-                    evaluation_steps=[
-                        "Check whether the facts in 'actual output' contradict any facts in 'expected output'",
-                        "Heavily penalize omission of important details",
-                        "Vague language or contradicting opinions are acceptable",
-                    ],
-                    evaluation_params=[
-                        LLMTestCaseParams.ACTUAL_OUTPUT,
-                        LLMTestCaseParams.EXPECTED_OUTPUT,
-                    ],
-                    model=self._model,
-                    threshold=0.7,
-                )
-                await self._rate_limiter.execute_with_retry(
-                    correctness_metric.measure,
-                    test_case,
-                    service_name="DeepEval",
-                    metric_name="correctness",
-                )
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_correctness",
-                        score=correctness_metric.score if correctness_metric.score is not None else 0.0,
-                        passed=correctness_metric.is_successful(),
-                        threshold=0.7,
-                        reason=correctness_metric.reason,
-                    )
-                )
-                print(f"{LOG_INDENT}[DeepEval] Correctness complete: {correctness_metric.score:.2f}")
-            except Exception as e:
-                _handle_metric_error(
-                    e,
-                    metric_name="deepeval_correctness",
-                    display_name="Correctness",
-                    threshold=0.7,
-                    zero_div_reason="Could not evaluate correctness - internal evaluation error",
-                    scores=scores,
-                )
+            correctness_metric = GEval(
+                name="Correctness",
+                evaluation_steps=[
+                    "Check whether the facts in 'actual output' contradict any facts in 'expected output'",
+                    "Heavily penalize omission of important details",
+                    "Vague language or contradicting opinions are acceptable",
+                ],
+                evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+                model=self._model, threshold=0.7,
+            )
+            await self._run_metric(
+                correctness_metric, test_case, "deepeval_correctness", "Correctness", 0.7,
+                "Could not evaluate correctness - internal evaluation error",
+                scores, rate_limit_name="correctness",
+            )
 
         if context:
-            print(f"{LOG_INDENT}[DeepEval] Running faithfulness eval...")
-            try:
-                faithfulness_metric = FaithfulnessMetric(
-                    threshold=0.8,
-                    model=self._model,
-                )
-                await self._rate_limiter.execute_with_retry(
-                    faithfulness_metric.measure,
-                    test_case,
-                    service_name="DeepEval",
-                    metric_name="faithfulness",
-                )
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_faithfulness",
-                        score=faithfulness_metric.score if faithfulness_metric.score is not None else 0.0,
-                        passed=faithfulness_metric.is_successful(),
-                        threshold=0.8,
-                        reason=faithfulness_metric.reason,
-                    )
-                )
-                print(f"{LOG_INDENT}[DeepEval] Faithfulness complete: {faithfulness_metric.score:.2f}")
-            except Exception as e:
-                _handle_metric_error(
-                    e,
-                    metric_name="deepeval_faithfulness",
-                    display_name="Faithfulness",
-                    threshold=0.8,
-                    zero_div_reason="Could not extract claims from output for faithfulness evaluation",
-                    scores=scores,
-                )
+            await self._run_metric(
+                FaithfulnessMetric(threshold=0.8, model=self._model),
+                test_case, "deepeval_faithfulness", "Faithfulness", 0.8,
+                "Could not extract claims from output for faithfulness evaluation",
+                scores, rate_limit_name="faithfulness",
+            )
 
-            print(f"{LOG_INDENT}[DeepEval] Running hallucination eval...")
-            try:
-                hallucination_metric = HallucinationMetric(
-                    threshold=0.5,
-                    model=self._model,
-                )
-                await self._rate_limiter.execute_with_retry(
-                    hallucination_metric.measure,
-                    test_case,
-                    service_name="DeepEval",
-                    metric_name="hallucination",
-                )
-                raw_score = hallucination_metric.score if hallucination_metric.score is not None else 0.0
-                hallucination_score = 1.0 - raw_score
-                original_reason = hallucination_metric.reason or ""
-                if hallucination_metric.score is not None:
-                    original_score_str = f"{hallucination_metric.score:.2f}"
-                    inverted_score_str = f"{hallucination_score:.2f}"
-                    adjusted_reason = original_reason.replace(
-                        f"score is {original_score_str}",
-                        f"score is {inverted_score_str}"
-                    )
-                else:
-                    adjusted_reason = original_reason
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_hallucination",
-                        score=hallucination_score,
-                        passed=hallucination_metric.is_successful(),
-                        threshold=0.5,
-                        reason=adjusted_reason,
-                    )
-                )
-                print(f"{LOG_INDENT}[DeepEval] Hallucination complete: {hallucination_score:.2f}")
-            except Exception as e:
-                _handle_metric_error(
-                    e,
-                    metric_name="deepeval_hallucination",
-                    display_name="Hallucination",
-                    threshold=0.5,
-                    zero_div_reason="Could not evaluate hallucination - no valid contexts",
-                    scores=scores,
-                )
+            def _invert_score(raw: float) -> float:
+                return 1.0 - raw
+
+            def _adjust_hallucination_reason(reason: str, raw: float, final: float) -> str:
+                return reason.replace(f"score is {raw:.2f}", f"score is {final:.2f}")
+
+            await self._run_metric(
+                HallucinationMetric(threshold=0.5, model=self._model),
+                test_case, "deepeval_hallucination", "Hallucination", 0.5,
+                "Could not evaluate hallucination - no valid contexts",
+                scores, rate_limit_name="hallucination",
+                score_transform=_invert_score, reason_transform=_adjust_hallucination_reason,
+            )
 
         if expected_tools:
-            print(f"{LOG_INDENT}[DeepEval] Running tool correctness eval...")
-            try:
-                tool_metric = ToolCorrectnessMetric(
-                    expected_tools=expected_tools,
-                    actual_tools_called=actual_tools_called,
-                    threshold=1.0,
-                )
-                tool_metric.measure(test_case)
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_tool_correctness",
-                        score=tool_metric.score,
-                        passed=tool_metric.is_successful(),
-                        threshold=1.0,
-                        reason=tool_metric.reason,
-                    )
-                )
-                print(f"{LOG_INDENT}[DeepEval] Tool correctness complete: {tool_metric.score:.2f}")
-            except Exception as e:
-                print(f"{LOG_INDENT}[DeepEval] Tool correctness failed: {e}")
-                scores.append(
-                    EvaluationScore(
-                        metric_name="deepeval_tool_correctness",
-                        score=0.0,
-                        passed=False,
-                        threshold=1.0,
-                        reason=f"Evaluation error: {e}",
-                    )
-                )
+            await self._run_metric(
+                ToolCorrectnessMetric(expected_tools=expected_tools, actual_tools_called=actual_tools_called, threshold=1.0),
+                test_case, "deepeval_tool_correctness", "Tool correctness", 1.0,
+                "Could not evaluate tool correctness", scores,
+            )
 
-        print(f"{LOG_INDENT}[DeepEval] Running schema validation eval...")
-        try:
-            schema_metric = SchemaValidationMetric(threshold=0.8)
-            schema_metric.measure(test_case)
-            scores.append(
-                EvaluationScore(
-                    metric_name="deepeval_schema_validation",
-                    score=schema_metric.score,
-                    passed=schema_metric.is_successful(),
-                    threshold=0.8,
-                    reason=schema_metric.reason,
-                )
-            )
-            print(f"{LOG_INDENT}[DeepEval] Schema validation complete: {schema_metric.score:.2f}")
-        except Exception as e:
-            print(f"{LOG_INDENT}[DeepEval] Schema validation failed: {e}")
-            scores.append(
-                EvaluationScore(
-                    metric_name="deepeval_schema_validation",
-                    score=0.0,
-                    passed=False,
-                    threshold=0.8,
-                    reason=f"Evaluation error: {e}",
-                )
-            )
+        await self._run_metric(
+            SchemaValidationMetric(threshold=0.8),
+            test_case, "deepeval_schema_validation", "Schema validation", 0.8,
+            "Could not validate schema", scores,
+        )
 
         return scores
 

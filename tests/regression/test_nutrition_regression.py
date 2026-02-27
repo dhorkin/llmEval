@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from syrupy.assertion import SnapshotAssertion
 
+from conftest import make_meal_info
 from decision_engine.rules import DecisionEngine
-from models.schemas import MealInfo, MealRecommendation, NutrientInfo
+from models.schemas import MealRecommendation
 
 
 class TestNutritionRegressionEdgeCases:
@@ -42,31 +43,17 @@ class TestNutritionRegressionEdgeCases:
             diet_type="mediterranean",
             restrictions=["dairy", "nuts"],
             meals=[
-                MealInfo(
-                    name="Grilled Salmon with Quinoa",
-                    description="Fresh salmon fillet with herb quinoa",
-                    ingredients=["salmon", "quinoa", "olive oil", "lemon"],
-                    nutrients=NutrientInfo(
-                        calories=450.0,
-                        protein_g=35.0,
-                        carbs_g=30.0,
-                        fat_g=20.0,
-                    ),
-                    diet_compatible=True,
-                    restriction_safe=True,
+                make_meal_info(
+                    "Grilled Salmon with Quinoa",
+                    "Fresh salmon fillet with herb quinoa",
+                    ["salmon", "quinoa", "olive oil", "lemon"],
+                    calories=450, protein=35, carbs=30, fat=20,
                 ),
-                MealInfo(
-                    name="Mediterranean Vegetable Bake",
-                    description="Roasted vegetables with herbs",
-                    ingredients=["zucchini", "eggplant", "tomatoes", "olive oil"],
-                    nutrients=NutrientInfo(
-                        calories=280.0,
-                        protein_g=8.0,
-                        carbs_g=35.0,
-                        fat_g=14.0,
-                    ),
-                    diet_compatible=True,
-                    restriction_safe=True,
+                make_meal_info(
+                    "Mediterranean Vegetable Bake",
+                    "Roasted vegetables with herbs",
+                    ["zucchini", "eggplant", "tomatoes", "olive oil"],
+                    calories=280, protein=8, carbs=35, fat=14,
                 ),
             ],
             conflict_detected=False,
@@ -90,27 +77,17 @@ class TestNutritionRegressionEdgeCases:
             diet_type="balanced",
             restrictions=[],
             meals=[
-                MealInfo(
-                    name="Chicken Stir Fry",
-                    description="Quick chicken stir fry",
-                    ingredients=["chicken", "vegetables", "rice"],
-                    nutrients=NutrientInfo(
-                        calories=400.0,
-                        protein_g=30.0,
-                        carbs_g=40.0,
-                        fat_g=12.0,
-                    ),
+                make_meal_info(
+                    "Chicken Stir Fry",
+                    "Quick chicken stir fry",
+                    ["chicken", "vegetables", "rice"],
+                    calories=400, protein=30, carbs=40, fat=12,
                 ),
-                MealInfo(
-                    name="Pasta Primavera",
-                    description="Vegetable pasta dish",
-                    ingredients=["pasta", "vegetables", "olive oil"],
-                    nutrients=NutrientInfo(
-                        calories=350.0,
-                        protein_g=12.0,
-                        carbs_g=55.0,
-                        fat_g=10.0,
-                    ),
+                make_meal_info(
+                    "Pasta Primavera",
+                    "Vegetable pasta dish",
+                    ["pasta", "vegetables", "olive oil"],
+                    calories=350, protein=12, carbs=55, fat=10,
                 ),
             ],
             conflict_detected=False,
