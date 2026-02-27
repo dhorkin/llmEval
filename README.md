@@ -5,6 +5,7 @@ An LLM-powered agent that uses external APIs to answer human-centric queries, wi
 ## Overview
 
 This project demonstrates:
+
 1. **Tool-using LLM Agent** - Orchestrates 4 public APIs based on user queries
 2. **Structured Outputs** - All responses follow strict Pydantic schemas
 3. **Dual Evaluation** - Independent quality assessment using both DeepEval and Phoenix
@@ -14,12 +15,14 @@ This project demonstrates:
 
 ### Supported APIs
 
-| Tool | API | Example Query |
-|------|-----|---------------|
-| **BookTool** | Open Library | "Find all books by George Orwell published before 1950" |
-| **NASATool** | NASA NEO | "Check for Near Earth Objects this weekend" |
-| **PoetryTool** | PoetryDB | "Find a sonnet by Shakespeare and explain the metaphor" |
-| **NutritionTool** | LogMeal | "Recommend Mediterranean meals without dairy" |
+
+| Tool              | API          | Example Query                                           |
+| ----------------- | ------------ | ------------------------------------------------------- |
+| **BookTool**      | Open Library | "Find all books by George Orwell published before 1950" |
+| **NASATool**      | NASA NEO     | "Check for Near Earth Objects this weekend"             |
+| **PoetryTool**    | PoetryDB     | "Find a sonnet by Shakespeare and explain the metaphor" |
+| **NutritionTool** | LogMeal      | "Recommend Mediterranean meals without dairy"           |
+
 
 ### Evaluation Frameworks
 
@@ -52,12 +55,15 @@ pip install -r requirements.txt
 
 This project uses [pip-tools](https://pip-tools.readthedocs.io/) for reproducible builds.
 
-| File | Purpose |
-|------|---------|
-| `requirements.in` | Direct dependencies with flexible versions |
+
+| File               | Purpose                                         |
+| ------------------ | ----------------------------------------------- |
+| `requirements.in`  | Direct dependencies with flexible versions      |
 | `requirements.txt` | Auto-generated lock file (do not edit manually) |
 
+
 **Adding or updating dependencies:**
+
 ```bash
 # Add a new dependency: edit requirements.in, then:
 pip-compile requirements.in
@@ -75,11 +81,13 @@ pip-sync
 ## Configuration
 
 1. Copy the sample environment file:
+
 ```bash
 cp sample.env .env
 ```
 
-2. Edit `.env` with your API keys:
+1. Edit `.env` with your API keys:
+
 ```bash
 # Required for LLM
 OPENAI_API_KEY=sk-your-key-here
@@ -131,6 +139,7 @@ python main.py pipeline
 ```
 
 This runs the complete flow:
+
 1. Generate test inputs
 2. Run agent on each test case
 3. Evaluate with both frameworks
@@ -151,20 +160,24 @@ python main.py drift-check
 
 ### DeepEval Metrics
 
-| Metric | What It Measures | Threshold |
-|--------|------------------|-----------|
-| **Answer Relevancy** | Is the output relevant to the query? | 0.7 |
-| **Faithfulness** | Does output only contain info from context? | 0.8 |
-| **Tool Correctness** | Were the correct tools called? | 1.0 |
-| **Schema Validation** | Does output match expected schema? | 0.8 |
+
+| Metric                | What It Measures                            | Threshold |
+| --------------------- | ------------------------------------------- | --------- |
+| **Answer Relevancy**  | Is the output relevant to the query?        | 0.7       |
+| **Faithfulness**      | Does output only contain info from context? | 0.8       |
+| **Tool Correctness**  | Were the correct tools called?              | 1.0       |
+| **Schema Validation** | Does output match expected schema?          | 0.8       |
+
 
 ### Phoenix Metrics
 
-| Metric | What It Measures | Threshold |
-|--------|------------------|-----------|
-| **Hallucination** | Does output contain fabricated info? | 0.8 |
-| **QA Correctness** | Is the answer factually correct? | 0.7 |
-| **Relevance** | Is output relevant to the input? | 0.7 |
+
+| Metric             | What It Measures                     | Threshold |
+| ------------------ | ------------------------------------ | --------- |
+| **Hallucination**  | Does output contain fabricated info? | 0.8       |
+| **QA Correctness** | Is the answer factually correct?     | 0.7       |
+| **Relevance**      | Is output relevant to the input?     | 0.7       |
+
 
 ### Score Normalization
 
@@ -176,11 +189,13 @@ python main.py drift-check
 
 Control how Phoenix scores responses using `PHOENIX_EVALUATION_METHOD`:
 
-| Method | Score Range | Description |
-|--------|-------------|-------------|
-| **categorical** | 0.0 or 1.0 | Built-in evaluators return text labels (e.g., "factual"/"hallucinated", "correct"/"incorrect", "relevant"/"unrelated") which are mapped to binary 0.0 or 1.0 scores (default) |
-| **discrete** | 0.0, 0.25, 0.5, 0.75, 1.0 | 5-point scale (excellent/good/fair/poor/very_poor) |
-| **continuous** | 0.00 - 1.00 | Numeric scores with 2 decimal precision |
+
+| Method          | Score Range               | Description                                                                                                                                                                   |
+| --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **categorical** | 0.0 or 1.0                | Built-in evaluators return text labels (e.g., "factual"/"hallucinated", "correct"/"incorrect", "relevant"/"unrelated") which are mapped to binary 0.0 or 1.0 scores (default) |
+| **discrete**    | 0.0, 0.25, 0.5, 0.75, 1.0 | 5-point scale (excellent/good/fair/poor/very_poor)                                                                                                                            |
+| **continuous**  | 0.00 - 1.00               | Numeric scores with 2 decimal precision                                                                                                                                       |
+
 
 **When to use each method:**
 
@@ -191,6 +206,7 @@ Control how Phoenix scores responses using `PHOENIX_EVALUATION_METHOD`:
 ### Pass/Fail Thresholds
 
 A test case **passes** only if both conditions are met:
+
 1. Framework agreement is at or above `MINIMUM_AGREEMENT_PASS_THRESHOLD`
 2. All individual metrics are at or above `MINIMUM_METRIC_PASS_THRESHOLD`
 
@@ -200,26 +216,32 @@ The `MINIMUM_AGREEMENT_PASS_THRESHOLD` setting controls how closely DeepEval and
 
 **How agreement is calculated (varies by evaluation method):**
 
-| Method | Agreement Calculation |
-|--------|----------------------|
-| **continuous/discrete** | Average similarity: `1.0 - |DeepEval - Phoenix|` for each metric |
-| **categorical** | Percentage of metrics where both agree on pass/fail (score ≥ 0.5 = pass) |
+
+| Method                  | Agreement Calculation                                                    |
+| ----------------------- | ------------------------------------------------------------------------ |
+| **continuous/discrete** | Average similarity: `1.0 -                                               |
+| **categorical**         | Percentage of metrics where both agree on pass/fail (score ≥ 0.5 = pass) |
+
 
 **Continuous/Discrete Example:**
+
 - Relevance: DeepEval=0.92, Phoenix=1.00 → similarity = 1.0 - 0.08 = 0.92
 - Correctness: DeepEval=0.92, Phoenix=0.75 → similarity = 1.0 - 0.17 = 0.83
 - Average agreement = (0.92 + 0.83) / 2 = **87.5%**
 
 **Categorical Example:**
+
 - Relevance: DeepEval=0.85 (pass), Phoenix=1.0 (pass) → **AGREE**
 - Hallucination: DeepEval=0.70 (pass), Phoenix=0.0 (fail) → **DIFFER**
 - Agreement = 1/2 = **50%**
 
-| Threshold | Use Case |
-|-----------|----------|
-| **0.9+** | High confidence required; strict consistency between evaluators |
-| **0.8** (default) | Balanced; allows minor variations while catching major disagreements |
-| **0.7** | More lenient; useful when evaluators have known methodology differences |
+
+| Threshold         | Use Case                                                                |
+| ----------------- | ----------------------------------------------------------------------- |
+| **0.9+**          | High confidence required; strict consistency between evaluators         |
+| **0.8** (default) | Balanced; allows minor variations while catching major disagreements    |
+| **0.7**           | More lenient; useful when evaluators have known methodology differences |
+
 
 #### Metric Threshold
 
@@ -227,21 +249,26 @@ The `MINIMUM_METRIC_PASS_THRESHOLD` setting controls the minimum acceptable scor
 
 **Behavior by evaluation method:**
 
-| Method | Score Range | With Threshold 0.7 |
-|--------|-------------|-------------------|
-| **categorical** | 0.0 or 1.0 | 0.0 fails, 1.0 passes (no middle ground) |
-| **discrete** | 0.0, 0.25, 0.5, 0.75, 1.0 | 0.75 and 1.0 pass; others fail |
-| **continuous** | 0.00 - 1.00 | Any score ≥ 0.70 passes |
+
+| Method          | Score Range               | With Threshold 0.7                       |
+| --------------- | ------------------------- | ---------------------------------------- |
+| **categorical** | 0.0 or 1.0                | 0.0 fails, 1.0 passes (no middle ground) |
+| **discrete**    | 0.0, 0.25, 0.5, 0.75, 1.0 | 0.75 and 1.0 pass; others fail           |
+| **continuous**  | 0.00 - 1.00               | Any score ≥ 0.70 passes                  |
+
 
 **Example:**
+
 - If Phoenix hallucination = 0.60 and threshold = 0.7, the test **fails** (0.60 < 0.70)
 - If DeepEval relevance = 0.85 and threshold = 0.7, the metric **passes** (0.85 ≥ 0.70)
 
-| Threshold | Use Case |
-|-----------|----------|
-| **0.8+** | High quality bar; all metrics must score well |
-| **0.7** (default) | Balanced; catches clearly poor responses |
-| **0.5** | Lenient; only fails on very low scores |
+
+| Threshold         | Use Case                                      |
+| ----------------- | --------------------------------------------- |
+| **0.8+**          | High quality bar; all metrics must score well |
+| **0.7** (default) | Balanced; catches clearly poor responses      |
+| **0.5**           | Lenient; only fails on very low scores        |
+
 
 > **Note:** In categorical mode, thresholds between 0.0 and 1.0 effectively act as binary (only 0.0 fails, only 1.0 passes). Use discrete or continuous mode for more granular threshold control.
 
@@ -258,11 +285,8 @@ The `MINIMUM_METRIC_PASS_THRESHOLD` setting controls the minimum acceptable scor
 Model drift occurs when evaluation scores gradually decrease over time without code changes. In this agent, drift manifests as:
 
 1. **Tool Selection Drift**: The LLM starts calling incorrect tools for queries it previously handled correctly (e.g., calling PoetryTool for book queries)
-
 2. **Hallucination Drift**: Faithfulness scores decrease as the model begins adding information not present in API responses
-
 3. **Schema Drift**: Output structure becomes inconsistent, failing Pydantic validation more frequently
-
 4. **Relevance Drift**: Answers become less focused on the original query
 
 ### Detection Method
@@ -317,6 +341,7 @@ The `tests/regression/` directory contains snapshot tests for the deterministic 
 - **Catch unintended changes** - Snapshots detect if decision engine output structure changes
 
 Test coverage includes:
+
 - **Book**: Unknown author handling, year filtering (before/after), temporal impossibility (Einstein after 2020)
 - **NEO**: Invalid date validation (Feb 30th), hazardous asteroid risk assessment, closest approach detection
 - **Nutrition**: Conflicting diet restrictions (vegan + beef), nutritional summary generation
