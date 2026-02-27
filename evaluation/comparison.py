@@ -61,8 +61,8 @@ class EvaluationComparison:
             actual_tools_called=actual_tools_called,
         )
 
-        all_scores = phoenix_scores + deepeval_scores
-        overall_passed = all(s.passed for s in all_scores)
+        # Determine pass/fail using global thresholds
+        overall_passed = self._check_overall_passed(deepeval_scores, phoenix_scores)
 
         return EvaluationResult(
             test_case_id=test_case_id,
@@ -125,8 +125,8 @@ class EvaluationComparison:
                     f"({len(deepeval_scores)} metrics)"
                 )
 
-            all_scores = phoenix_scores + deepeval_scores
-            overall_passed = all(s.passed for s in all_scores)
+            # Determine pass/fail using global thresholds
+            overall_passed = self._check_overall_passed(deepeval_scores, phoenix_scores)
 
             result = EvaluationResult(
                 test_case_id=test_case_id,
@@ -475,6 +475,32 @@ class EvaluationComparison:
             # For continuous/discrete, use score similarity
             similarities = [1.0 - abs(de - ph) for de, ph in comparable]
             return sum(similarities) / len(comparable)
+
+    def _check_overall_passed(
+        self,
+        deepeval_scores: list[EvaluationScore],
+        phoenix_scores: list[EvaluationScore],
+    ) -> bool:
+        """Check if test case passes using global thresholds.
+        
+        A test case passes only if:
+        1. All metrics meet MINIMUM_METRIC_PASS_THRESHOLD
+        2. Framework agreement meets MINIMUM_AGREEMENT_PASS_THRESHOLD
+        """
+        metric_threshold = self.settings.minimum_metric_pass_threshold
+        agreement_threshold = self.settings.minimum_agreement_pass_threshold
+        
+        # Check all metrics against global threshold
+        all_scores = deepeval_scores + phoenix_scores
+        metrics_passed = all(
+            score.score >= metric_threshold for score in all_scores
+        )
+        
+        # Check agreement between frameworks
+        agreement = self._calculate_agreement(deepeval_scores, phoenix_scores)
+        agreement_passed = agreement >= agreement_threshold
+        
+        return metrics_passed and agreement_passed
 
     def save_results(
         self,

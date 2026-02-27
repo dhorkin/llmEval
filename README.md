@@ -271,6 +271,12 @@ pytest tests/functional/
 # Run schema validation tests
 pytest tests/schema/
 
+# Run regression tests (decision engine snapshot testing)
+pytest tests/regression/
+
+# Run regression tests and update snapshots if intentionally changed
+pytest tests/regression/ --snapshot-update
+
 # Run DeepEval tests (requires API keys)
 deepeval test run tests/deepeval/
 
@@ -278,18 +284,37 @@ deepeval test run tests/deepeval/
 mypy .
 ```
 
+### Regression Tests
+
+The `tests/regression/` directory contains snapshot tests for the deterministic decision engine. These tests:
+
+- **Do not require API keys** - They use mock data, no external calls
+- **Run fast** - Pure Python logic, no network latency
+- **Catch unintended changes** - Snapshots detect if decision engine output structure changes
+
+Test coverage includes:
+- **Book**: Unknown author handling, year filtering (before/after), temporal impossibility (Einstein after 2020)
+- **NEO**: Invalid date validation (Feb 30th), hazardous asteroid risk assessment, closest approach detection
+- **Nutrition**: Conflicting diet restrictions (vegan + beef), nutritional summary generation
+- **Poetry**: Sonnet filtering (14 lines), quatrain extraction, literary analysis detection
+
+Run these before submitting PRs to ensure decision engine logic hasn't regressed.
+
 ## CI/CD
 
 The project includes GitHub Actions workflow (`.github/workflows/ci.yml`) that:
 
 1. Runs mypy type checking
-2. Executes pytest tests
+2. Executes pytest tests (functional, schema, and regression)
 3. Runs DeepEval evaluation (on push to main)
+4. Runs full evaluation pipeline and verifies pass rate
 
 ### CI Fail Conditions
 
 - mypy type checking fails
-- Faithfulness score < 0.8
+- Any pytest test fails (including regression snapshot mismatches)
+- Any metric < `MINIMUM_METRIC_PASS_THRESHOLD`
+- Agreement < `MINIMUM_AGREEMENT_PASS_THRESHOLD`
 - Schema validation fails
 - Tool mismatch detected
 

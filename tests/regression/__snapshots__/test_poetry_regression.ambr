@@ -1,0 +1,117 @@
+# serializer version: 1
+# name: TestPoetryRegressionEdgeCases.test_literary_analysis_requested
+  dict({
+    'analysis': '',
+    'focus_lines': list([
+    ]),
+    'literary_devices': list([
+      'Analysis requested but not yet performed',
+    ]),
+    'no_results': False,
+    'poem': dict({
+      'author': 'Robert Frost',
+      'linecount': 20,
+      'lines': list([
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+        'Two roads diverged in a yellow wood,',
+      ]),
+      'title': 'The Road Not Taken',
+    }),
+    'query': 'Analyze the metaphor in The Road Not Taken',
+    'type': 'POETRY_ANALYSIS',
+  })
+# ---
+# name: TestPoetryRegressionEdgeCases.test_no_poems_found
+  dict({
+    'analysis': 'No poems found matching the criteria.',
+    'focus_lines': list([
+    ]),
+    'literary_devices': list([
+    ]),
+    'no_results': True,
+    'poem': None,
+    'query': 'Find poems by Nonexistent Poet',
+    'type': 'POETRY_ANALYSIS',
+  })
+# ---
+# name: TestPoetryRegressionEdgeCases.test_quatrain_focus_lines
+  dict({
+    'analysis': '',
+    'focus_lines': list([
+      "Shall I compare thee to a summer's day?",
+      'Thou art more lovely and more temperate:',
+      'Rough winds do shake the darling buds of May,',
+      "And summer's lease hath all too short a date:",
+    ]),
+    'literary_devices': list([
+      'Analysis requested but not yet performed',
+    ]),
+    'no_results': False,
+    'poem': dict({
+      'author': 'William Shakespeare',
+      'linecount': 14,
+      'lines': list([
+        "Shall I compare thee to a summer's day?",
+        'Thou art more lovely and more temperate:',
+        'Rough winds do shake the darling buds of May,',
+        "And summer's lease hath all too short a date:",
+        'Sometime too hot the eye of heaven shines,',
+        "And often is his gold complexion dimm'd;",
+      ]),
+      'title': 'Sonnet 18',
+    }),
+    'query': 'Analyze the first quatrain of a Shakespeare sonnet',
+    'type': 'POETRY_ANALYSIS',
+  })
+# ---
+# name: TestPoetryRegressionEdgeCases.test_sonnet_filter_applied
+  dict({
+    'analysis': '',
+    'focus_lines': list([
+    ]),
+    'literary_devices': list([
+    ]),
+    'no_results': False,
+    'poem': dict({
+      'author': 'William Shakespeare',
+      'linecount': 14,
+      'lines': list([
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+        "Shall I compare thee to a summer's day?",
+      ]),
+      'title': 'Sonnet 18',
+    }),
+    'query': 'Find a sonnet by Shakespeare',
+    'type': 'POETRY_ANALYSIS',
+  })
+# ---

@@ -46,6 +46,9 @@ jobs:
       - name: Run pytest (functional and schema tests)
         run: pytest tests/functional tests/schema -v
 
+      - name: Run regression tests with snapshot verification
+        run: pytest tests/regression -v
+
   deepeval:
     name: DeepEval Evaluation
     runs-on: ubuntu-latest
@@ -70,14 +73,61 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run DeepEval tests
-        run: |
-          deepeval test run tests/deepeval/ || true
+        run: deepeval test run tests/deepeval/
 
-      - name: Check evaluation thresholds
+      - name: Run full evaluation pipeline
         run: |
-          echo "Checking evaluation thresholds..."
-          # DeepEval stores results - check for failures
-          # This would integrate with DeepEval's reporting
+          python main.py evaluate --framework both
+          # Pipeline will exit with non-zero if thresholds not met
+
+      - name: Verify evaluation results
+        run: |
+          # Check that evaluation completed and results were saved
+          if [ ! -d "logs" ] || [ -z "$(ls -A logs/evaluation_*.json 2>/dev/null)" ]; then
+            echo "ERROR: No evaluation results found"
+            exit 1
+          fi
+          
+          # Parse latest results and verify pass conditions
+          LATEST_LOG=$(ls -t logs/evaluation_*.json | head -1)
+          echo "Checking results in: $LATEST_LOG"
+          
+          python -c "
+          import json
+          import sys
+          import os
+          
+          data = json.load(open('$LATEST_LOG'))
+          summary = data['summary']
+          results = data['results']
+          
+          # Get thresholds from environment (with defaults)
+          metric_threshold = float(os.environ.get('MINIMUM_METRIC_PASS_THRESHOLD', '0.7'))
+          agreement_threshold = float(os.environ.get('MINIMUM_AGREEMENT_PASS_THRESHOLD', '0.8'))
+          
+          print(f'Configured thresholds:')
+          print(f'  Metric threshold: {metric_threshold:.0%}')
+          print(f'  Agreement threshold: {agreement_threshold:.0%}')
+          print()
+          
+          # Check pass rate (already uses global thresholds in overall_passed)
+          pass_rate = summary['pass_rate']
+          passed = summary['passed']
+          total = summary['total_test_cases']
+          
+          print(f'Results: {passed}/{total} test cases passed ({pass_rate:.0%})')
+          
+          # Show any failures
+          failed_cases = [r for r in results if not r['overall_passed']]
+          if failed_cases:
+              print(f'\\nFailed test cases:')
+              for r in failed_cases:
+                  print(f'  - {r[\"test_case_id\"]}')
+              print(f'\\nFAILED: {len(failed_cases)} test case(s) did not meet thresholds')
+              sys.exit(1)
+          
+          print(f'\\nPASSED: All {total} test cases met thresholds')
+          "
 
   lint:
     name: Linting

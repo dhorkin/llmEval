@@ -1,0 +1,134 @@
+# serializer version: 1
+# name: TestNutritionRegressionEdgeCases.test_conflicting_restrictions_vegan_with_beef
+  dict({
+    'conflict_detected': True,
+    'conflict_message': 'Cannot recommend vegan meals containing beef. Vegan diet excludes all animal products.',
+    'diet_type': 'vegan',
+    'nutritional_summary': 'Unable to provide recommendations due to conflicting requirements.',
+    'query': 'Recommend a vegan meal with beef',
+    'recommendations': list([
+    ]),
+    'restrictions': list([
+    ]),
+    'type': 'MEAL_RECOMMENDATION',
+  })
+# ---
+# name: TestNutritionRegressionEdgeCases.test_empty_meals_summary
+  dict({
+    'conflict_detected': False,
+    'conflict_message': None,
+    'diet_type': 'keto',
+    'nutritional_summary': 'No meals available for nutritional summary.',
+    'query': 'Keto meals avoiding all common foods',
+    'recommendations': list([
+    ]),
+    'restrictions': list([
+      'all-common-foods',
+    ]),
+    'type': 'MEAL_RECOMMENDATION',
+  })
+# ---
+# name: TestNutritionRegressionEdgeCases.test_nutritional_summary_generated
+  dict({
+    'conflict_detected': False,
+    'conflict_message': None,
+    'diet_type': 'balanced',
+    'nutritional_summary': 'Average per meal: 375 calories, 21.0g protein, 47.5g carbs, 11.0g fat. All 2 recommended meals comply with specified dietary restrictions.',
+    'query': 'Recommend balanced dinner options',
+    'recommendations': list([
+      dict({
+        'description': 'Quick chicken stir fry',
+        'diet_compatible': True,
+        'ingredients': list([
+          'chicken',
+          'vegetables',
+          'rice',
+        ]),
+        'name': 'Chicken Stir Fry',
+        'nutrients': dict({
+          'calories': 400.0,
+          'carbs_g': 40.0,
+          'fat_g': 12.0,
+          'fiber_g': None,
+          'protein_g': 30.0,
+        }),
+        'restriction_safe': True,
+      }),
+      dict({
+        'description': 'Vegetable pasta dish',
+        'diet_compatible': True,
+        'ingredients': list([
+          'pasta',
+          'vegetables',
+          'olive oil',
+        ]),
+        'name': 'Pasta Primavera',
+        'nutrients': dict({
+          'calories': 350.0,
+          'carbs_g': 55.0,
+          'fat_g': 10.0,
+          'fiber_g': None,
+          'protein_g': 12.0,
+        }),
+        'restriction_safe': True,
+      }),
+    ]),
+    'restrictions': list([
+    ]),
+    'type': 'MEAL_RECOMMENDATION',
+  })
+# ---
+# name: TestNutritionRegressionEdgeCases.test_valid_diet_with_restrictions
+  dict({
+    'conflict_detected': False,
+    'conflict_message': None,
+    'diet_type': 'mediterranean',
+    'nutritional_summary': 'Average per meal: 365 calories, 21.5g protein, 32.5g carbs, 17.0g fat. All 2 recommended meals comply with specified dietary restrictions.',
+    'query': 'Mediterranean dinner options without dairy and nuts',
+    'recommendations': list([
+      dict({
+        'description': 'Fresh salmon fillet with herb quinoa',
+        'diet_compatible': True,
+        'ingredients': list([
+          'salmon',
+          'quinoa',
+          'olive oil',
+          'lemon',
+        ]),
+        'name': 'Grilled Salmon with Quinoa',
+        'nutrients': dict({
+          'calories': 450.0,
+          'carbs_g': 30.0,
+          'fat_g': 20.0,
+          'fiber_g': None,
+          'protein_g': 35.0,
+        }),
+        'restriction_safe': True,
+      }),
+      dict({
+        'description': 'Roasted vegetables with herbs',
+        'diet_compatible': True,
+        'ingredients': list([
+          'zucchini',
+          'eggplant',
+          'tomatoes',
+          'olive oil',
+        ]),
+        'name': 'Mediterranean Vegetable Bake',
+        'nutrients': dict({
+          'calories': 280.0,
+          'carbs_g': 35.0,
+          'fat_g': 14.0,
+          'fiber_g': None,
+          'protein_g': 8.0,
+        }),
+        'restriction_safe': True,
+      }),
+    ]),
+    'restrictions': list([
+      'dairy',
+      'nuts',
+    ]),
+    'type': 'MEAL_RECOMMENDATION',
+  })
+# ---

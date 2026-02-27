@@ -1,0 +1,141 @@
+# serializer version: 1
+# name: TestBookRegressionEdgeCases.test_books_sorted_by_relevance
+  dict({
+    'books_found': list([
+      dict({
+        'author': 'Test Author',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': 'A Book',
+        'year': 2010,
+      }),
+      dict({
+        'author': 'Test Author',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': 'M Book',
+        'year': 2005,
+      }),
+      dict({
+        'author': 'Test Author',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': 'Z Book',
+        'year': 2000,
+      }),
+      dict({
+        'author': 'Test Author',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': 'No Year Book',
+        'year': None,
+      }),
+    ]),
+    'common_themes': list([
+    ]),
+    'no_results': False,
+    'query': 'Find books by Test Author',
+    'theme_summary': '',
+    'type': 'BOOK_ANALYSIS',
+  })
+# ---
+# name: TestBookRegressionEdgeCases.test_temporal_impossibility_einstein_after_2020
+  dict({
+    'books_found': list([
+    ]),
+    'common_themes': list([
+    ]),
+    'no_results': True,
+    'query': 'Find books by Einstein published after 2020',
+    'theme_summary': 'No books found matching the criteria.',
+    'type': 'BOOK_ANALYSIS',
+  })
+# ---
+# name: TestBookRegressionEdgeCases.test_unknown_author_returns_empty_results
+  dict({
+    'books_found': list([
+    ]),
+    'common_themes': list([
+    ]),
+    'no_results': True,
+    'query': 'Find books by Unknown Author XYZ',
+    'theme_summary': 'No books found matching the criteria.',
+    'type': 'BOOK_ANALYSIS',
+  })
+# ---
+# name: TestBookRegressionEdgeCases.test_year_filter_after_constraint
+  dict({
+    'books_found': list([
+      dict({
+        'author': 'George Orwell',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': '1984',
+        'year': 1949,
+      }),
+      dict({
+        'author': 'George Orwell',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': 'Animal Farm',
+        'year': 1945,
+      }),
+    ]),
+    'common_themes': list([
+    ]),
+    'no_results': False,
+    'query': 'Find books by George Orwell published after 1940',
+    'theme_summary': '',
+    'type': 'BOOK_ANALYSIS',
+  })
+# ---
+# name: TestBookRegressionEdgeCases.test_year_filter_before_constraint
+  dict({
+    'books_found': list([
+      dict({
+        'author': 'George Orwell',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': 'Animal Farm',
+        'year': 1945,
+      }),
+      dict({
+        'author': 'George Orwell',
+        'description': None,
+        'isbn': None,
+        'open_library_key': None,
+        'subjects': list([
+        ]),
+        'title': 'Coming Up for Air',
+        'year': 1939,
+      }),
+    ]),
+    'common_themes': list([
+    ]),
+    'no_results': False,
+    'query': 'Find books by George Orwell published before 1946',
+    'theme_summary': '',
+    'type': 'BOOK_ANALYSIS',
+  })
+# ---
