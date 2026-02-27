@@ -417,9 +417,16 @@ Format your response as JSON:
 
         try:
             response = await self._call_llm(prompt)
-            data = json.loads(response)
+            data = self._parse_llm_json_response(response, "theme analysis LLM")
             return data.get("theme_summary", ""), data.get("common_themes", [])
-        except Exception:
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+                print(f"[Agent] Theme analysis: LLM rate limited, using fallback")
+            elif "Empty response" in error_msg or "HTML error" in error_msg:
+                print(f"[Agent] Theme analysis: {error_msg}, using fallback")
+            else:
+                print(f"[Agent] Theme analysis failed ({type(e).__name__}): {error_msg}")
             all_subjects: list[str] = []
             for b in books:
                 all_subjects.extend(b.subjects[:3])
@@ -452,10 +459,65 @@ Format your response as JSON:
 
         try:
             response = await self._call_llm(prompt)
-            data = json.loads(response)
+            data = self._parse_llm_json_response(response, "poem analysis LLM")
             return data.get("analysis", ""), data.get("literary_devices", [])
-        except Exception:
-            return f"Poem '{poem.title}' by {poem.author} ({poem.linecount} lines).", ["Analysis unavailable"]
+        except Exception as e:
+            error_msg = str(e)
+            fallback_result = f"Poem '{poem.title}' by {poem.author} ({poem.linecount} lines)."
+            
+            if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+                print(f"[Agent] Poem analysis: LLM rate limited")
+                return fallback_result, ["Analysis skipped: API rate limited"]
+            elif "Empty response" in error_msg:
+                print(f"[Agent] Poem analysis: Empty LLM response (possible rate limit)")
+                return fallback_result, ["Analysis skipped: Empty API response"]
+            elif "HTML error" in error_msg:
+                print(f"[Agent] Poem analysis: Received HTML error page (likely rate limited)")
+                return fallback_result, ["Analysis skipped: API returned error page"]
+            else:
+                print(f"[Agent] Poem analysis failed ({type(e).__name__}): {error_msg}")
+                return fallback_result, [f"Analysis failed: {type(e).__name__}"]
+
+    def _parse_llm_json_response(self, response: str, context: str = "LLM") -> dict:
+        """Parse JSON from LLM response with diagnostic error handling.
+        
+        Args:
+            response: Raw LLM response string
+            context: Description of what operation this is for (for error messages)
+            
+        Returns:
+            Parsed JSON dict
+            
+        Raises:
+            ValueError: With descriptive message about what went wrong
+        """
+        if not response or not response.strip():
+            raise ValueError(f"Empty response from {context} (possible rate limit or API issue)")
+        
+        cleaned = response.strip()
+        
+        if cleaned.startswith("<!") or cleaned.startswith("<html"):
+            raise ValueError(f"Received HTML error page from {context} (likely rate limited)")
+        
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            json_lines = []
+            in_block = False
+            for line in lines:
+                if line.startswith("```") and not in_block:
+                    in_block = True
+                    continue
+                elif line.startswith("```") and in_block:
+                    break
+                elif in_block:
+                    json_lines.append(line)
+            cleaned = "\n".join(json_lines).strip()
+        
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            preview = response[:100] + "..." if len(response) > 100 else response
+            raise ValueError(f"Invalid JSON from {context}: {e}. Response preview: {preview!r}")
 
     async def _call_llm(self, prompt: str) -> str:
         """Call the configured LLM provider."""

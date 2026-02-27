@@ -91,11 +91,18 @@ class BaseTool(ABC):
                     self.name,
                 )
             except httpx.HTTPStatusError as e:
-                if e.response.status_code >= 500:
+                status = e.response.status_code
+                if status >= 500:
                     last_exception = e
+                elif status == 429:
+                    last_exception = ToolError(
+                        f"Rate limited (HTTP 429). Retry-After: {e.response.headers.get('Retry-After', 'unknown')}",
+                        self.name,
+                        recoverable=True,
+                    )
                 else:
                     raise ToolError(
-                        f"HTTP error {e.response.status_code}: {e.response.text}",
+                        f"HTTP error {status}: {e.response.text[:200]}",
                         self.name,
                         recoverable=False,
                     ) from e
