@@ -257,7 +257,7 @@ class EvaluationComparison:
             )
             
             # Determine pass/fail based on both thresholds
-            agreement_passed = agreement >= agreement_threshold
+            agreement_passed = agreement >= agreement_threshold - 1e-9
             metrics_passed = len(failed_metrics) == 0
             overall_passed = agreement_passed and metrics_passed
             
@@ -505,7 +505,7 @@ class EvaluationComparison:
         
         # Check agreement between frameworks
         agreement = self._calculate_agreement(deepeval_scores, phoenix_scores)
-        agreement_passed = agreement >= agreement_threshold
+        agreement_passed = agreement >= agreement_threshold - 1e-9
         
         return metrics_passed and agreement_passed
 
